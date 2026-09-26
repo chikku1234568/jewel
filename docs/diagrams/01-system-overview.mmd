@@ -1,0 +1,50 @@
+flowchart LR
+    user(["Reviewer in browser<br/>private showcase URL"])
+
+    subgraph FE["Frontend: Vite + React + TypeScript"]
+        banner["Not-for-clinical-use banner"]
+        ingestUI["Ingest panel<br/>paste text / upload PDF"]
+        progressUI["Progress list<br/>5 steps via SSE"]
+        chatUI["Chat<br/>graph answer vs naive RAG"]
+        graphUI["Graph view<br/>Cytoscape.js, closed edge visible"]
+    end
+
+    subgraph BE["Backend: FastAPI"]
+        api["REST + SSE routes<br/>/episodes /runs /ask /graph"]
+        ingest["Ingestion<br/>episode = author, time, raw text"]
+        parser["DocumentParser<br/>pypdf / pdfplumber"]
+        subgraph LG["LangGraph run"]
+            nParse["parse"]
+            nEhr["ehr_order_agent"]
+            nLab["lab_monitor_agent"]
+            nPharm["pharmacologist_agent"]
+            nAns["answer"]
+        end
+        rules["Frozen rules<br/>deterministic code"]
+        writer["GraphWriter<br/>per-agent permission guard"]
+        retr["Temporal retrieval<br/>PPR over edges valid at t"]
+        rag["Naive RAG baseline<br/>raw episode text"]
+        llm["LLM + embeddings<br/>provider-agnostic"]
+    end
+
+    neo4j[("Neo4j 5.x Community<br/>temporal KG + Episode nodes<br/>+ vector index")]
+    redis[("Redis<br/>LLM / embedding / retrieval cache")]
+    provider[["LLM provider<br/>TBD"]]
+
+    user --> FE
+    FE -->|HTTP / SSE| api
+    api --> ingest
+    ingest --> parser
+    ingest -->|Episode nodes| neo4j
+    api --> LG
+    nParse --> nEhr --> nLab --> nPharm --> nAns
+    nPharm --> rules
+    nEhr & nLab & nPharm --> writer
+    writer -->|Cypher writes| neo4j
+    nAns --> retr & rag
+    retr -->|time-filtered reads, vector search| neo4j
+    rag -->|episode text, vector search| neo4j
+    nParse & nPharm & nAns & retr & rag --> llm
+    llm --> provider
+    llm <-->|cache| redis
+    retr <-->|cache| redis

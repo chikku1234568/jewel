@@ -1,0 +1,16 @@
+flowchart LR
+    P["Patient<br/>id, synthetic: true"]
+    MO["MedicationOrder<br/>id, drug, signed_at, signed_by"]
+    LO["LabObservation<br/>biomarker, value, unit<br/>collected_at"]
+    CR["ClinicalProtocolRule<br/>rule_id, drug, frequency<br/>biomarker, threshold, frozen: true"]
+    EP["Episode (provenance)<br/>author, authored_at, ingested_at<br/>source_kind, raw_text, embedding"]
+    EN["Entity (retrieval support)<br/>name, embedding"]
+
+    P -->|"PRESCRIBED_DOSE<br/>dose, route, frequency<br/>valid_at, invalid_at"| MO
+    P -->|"HAS_BIOMARKER_VALUE<br/>valid_at, invalid_at"| LO
+    CR -->|"CONTRAINDICATES<br/>dose_rel_id, valid_at, invalid_at"| MO
+    LO -->|"TRIGGERS_SAFETY_HOLD<br/>rule_id, valid_at, invalid_at"| MO
+    MO -.->|"REQUIRES_REVIEW (optional)<br/>reason, valid_at, invalid_at"| P
+    MO & LO & P -.->|"FROM_EPISODE"| EP
+    EN -.->|"MENTIONED_IN"| EP
+    EN -.->|"RELATED_TO (open triple)<br/>predicate, valid_at, invalid_at"| EN

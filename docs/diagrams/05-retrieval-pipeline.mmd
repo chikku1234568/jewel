@@ -1,0 +1,14 @@
+flowchart TD
+    Q["Question + t_query (default: now)"] --> NER["1. Query entity extraction (LLM)<br/>and linking to KG nodes (vector index)"]
+    Q --> TF["2. Temporal filter<br/>keep relationships with valid_at at or before t_query<br/>and invalid_at null or after t_query"]
+    TF --> CAND["3. Query-to-triple retrieval<br/>top-k valid triples by embedding similarity"]
+    NER --> CAND
+    CAND --> RM["4. Recognition-memory filter (LLM)<br/>keep only relevant triples"]
+    RM --> SEED["5. Seed weights<br/>phrase nodes from filtered triples<br/>+ Episode nodes by query similarity, down-weighted"]
+    TF --> SUB["Time-valid subgraph<br/>+ Episode passage nodes"]
+    SEED --> PPR["6. Personalized PageRank<br/>Option A: Neo4j GDS gds.pageRank with sourceNodes<br/>Option B: networkx / igraph in Python"]
+    SUB --> PPR
+    PPR --> RANK["7. Ranked facts, relationships and episodes<br/>closed edges excluded by construction"]
+    RANK --> PROV["8. Provenance<br/>episode_id to raw_text on Episode node"]
+    PROV --> GEN["9. Answer generation (LLM)<br/>cites facts, states as-of time"]
+    GEN --> OUT["Graph answer: NO, dose closed at specimen time"]

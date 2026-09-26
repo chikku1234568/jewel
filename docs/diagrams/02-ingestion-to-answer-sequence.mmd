@@ -1,0 +1,56 @@
+sequenceDiagram
+    autonumber
+    actor U as Reviewer
+    participant FE as Frontend
+    participant API as FastAPI
+    participant ING as Ingestion + Parser
+    participant LG as LangGraph run
+    participant GW as GraphWriter
+    participant DB as Neo4j
+    participant LLM as LLM (via cache)
+
+    U->>FE: Paste order text, upload progress note and lab PDF
+    FE->>API: POST /episodes (x3)
+    API->>ING: extract text (PDF) and build Episode
+    ING->>DB: CREATE (:Episode {author, authored_at, raw_text})
+    U->>FE: Run
+    FE->>API: POST /runs, then open SSE stream
+    API->>LG: invoke graph (state: episode_ids, now)
+
+    Note over LG: parse node
+    LG-->>FE: SSE step 1 started, Parse orders
+    LG->>LLM: triple extraction per episode
+
+    Note over LG: ehr_order_agent
+    LG->>GW: write Patient, MedicationOrder, PRESCRIBED_DOSE {valid_at}
+    GW->>DB: allowed for EHR Order
+    LG-->>FE: SSE step 1 done
+
+    Note over LG: lab_monitor_agent
+    LG-->>FE: SSE step 2 started, Ingest labs
+    LG->>GW: write LabObservation {collected_at}, HAS_BIOMARKER_VALUE (CrCl)
+    GW->>DB: allowed for Laboratory Monitor
+    LG-->>FE: SSE step 2 done
+
+    Note over LG: pharmacologist_agent
+    LG-->>FE: SSE step 3 started, Evaluate the rule
+    LG->>DB: read active PRESCRIBED_DOSE and latest CrCl
+    LG->>LG: frozen rule R1 (code, not LLM): CrCl below 30 and enoxaparin BID
+    LG-->>FE: SSE step 3 done (rule fails)
+    LG-->>FE: SSE step 4 started, Invalidate the dose
+    LG->>GW: SET PRESCRIBED_DOSE.invalid_at = specimen time, CONTRAINDICATES, TRIGGERS_SAFETY_HOLD
+    GW->>DB: allowed for Clinical Pharmacologist
+    LG-->>FE: SSE step 4 done
+    LG-->>FE: SSE step 5 started, State what is still active
+    LG->>LLM: write one status sentence from graph facts
+    LG-->>FE: SSE step 5 done
+
+    U->>FE: Ask "Is the current order for enoxaparin 100 mg BID valid for immediate administration?"
+    FE->>API: POST /ask
+    API->>LG: answer node
+    LG->>DB: temporal retrieval over edges valid at now
+    LG->>DB: naive RAG over raw episode text
+    LG->>LLM: generate both answers with provenance
+    API-->>FE: graph answer NO (dose closed at specimen time), baseline answer YES (wrong)
+    FE->>API: GET /graph?as_of=now
+    API-->>FE: subgraph with the closed edge (invalid_at shown)
