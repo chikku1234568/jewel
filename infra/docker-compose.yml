@@ -1,0 +1,64 @@
+# Local development stack (placeholder for step 1).
+# Usage from the repo root:  docker compose -f infra/docker-compose.yml --env-file .env up --build
+name: jewel
+
+services:
+  neo4j:
+    image: neo4j:5.26-community # 5.x LTS line, Community Edition (ADR 0002)
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-change-me-please}
+      # Optional, open sub-question in ADR 0004 (PPR via Neo4j Graph Data Science):
+      # NEO4J_PLUGINS: '["graph-data-science"]'
+    ports:
+      - "7474:7474" # Neo4j Browser
+      - "7687:7687" # Bolt
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-change-me-please} 'RETURN 1' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8-alpine # ADR 0003
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+    environment:
+      JEWEL_ENV: local
+      JEWEL_NEO4J_URI: bolt://neo4j:7687
+      JEWEL_NEO4J_USER: ${NEO4J_USER:-neo4j}
+      JEWEL_NEO4J_PASSWORD: ${NEO4J_PASSWORD:-change-me-please}
+      JEWEL_REDIS_URL: redis://redis:6379/0
+      JEWEL_LLM_PROVIDER: ${JEWEL_LLM_PROVIDER:-unset}
+      JEWEL_LLM_MODEL: ${JEWEL_LLM_MODEL:-unset}
+      JEWEL_EMBEDDING_MODEL: ${JEWEL_EMBEDDING_MODEL:-unset}
+    ports:
+      - "8000:8000"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  neo4j_data:
