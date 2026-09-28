@@ -1,6 +1,8 @@
 # 0007. LangGraph orchestration and graph-writer permission layer
 
-- **Status:** Proposed, for review
+> **Superseded (2026-09-28)** by [0013](0013-single-langgraph-agent.md). The multi-agent design and its write-permission layer were removed. Kept for history only; not part of the active decision set.
+
+- **Status:** Superseded by [0013](0013-single-langgraph-agent.md) on 2026-09-28 (previously: Proposed, for review)
 
 ## Context
 

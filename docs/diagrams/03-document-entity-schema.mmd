@@ -1,0 +1,9 @@
+%% name: 03-document-entity-schema
+flowchart LR
+    E1["Entity<br/>user_id, name, type, embedding"]
+    E2["Entity<br/>user_id, name, type, embedding"]
+    D["Document (passage node)<br/>user_id, filename, media_type<br/>uploaded_at, document_date, status<br/>raw_text, embedding"]
+
+    E1 -->|"MENTIONS<br/>user_id, quote, offsets, valid_at"| D
+    E2 -->|"MENTIONS<br/>user_id, quote, offsets, valid_at"| D
+    E1 -->|"RELATED_TO<br/>user_id, predicate, quote, offsets<br/>document_id, valid_at, invalid_at"| E2

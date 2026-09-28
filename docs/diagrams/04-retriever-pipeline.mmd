@@ -1,0 +1,13 @@
+%% name: 04-retriever-pipeline
+flowchart TD
+    Q["search_graph(query, optional time)<br/>user_id bound by the app"] --> L["1. Link query to the user's entities<br/>embedding search on Entity, user_id filter"]
+    Q --> V["2. Keep relationships valid at the question time<br/>default now, undated ones remain"]
+    L --> R["3. Rank candidate triples by similarity<br/>take top-k"]
+    V --> R
+    R --> M["4. Recognition memory<br/>one model call drops irrelevant triples"]
+    M --> S["5. Seeds<br/>entities on kept triples<br/>+ Documents weighted by similarity, down-weighted"]
+    V --> G["User's valid subgraph pulled into Python<br/>+ their Document nodes"]
+    S --> P["Personalized PageRank<br/>networkx"]
+    G --> P
+    P --> OUT["6. Result<br/>ranked entities, RELATED_TO (predicate, endpoints,<br/>quote, document id, times), cited passages"]
+    OUT --> HL["Highlight ids sent to the Graph view"]

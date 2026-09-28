@@ -1,6 +1,8 @@
 # 0002. Graph store: Neo4j 5.x Community
 
-- **Status:** Accepted (decided by Srikar, 2026-09-26)
+> **Superseded (2026-09-28)** by [0011](0011-neo4j-per-user-graph.md). Neo4j stays, but the graph model changed completely with the product spec. Kept for history only; not part of the active decision set.
+
+- **Status:** Superseded by [0011](0011-neo4j-per-user-graph.md) on 2026-09-28 (previously: Accepted (decided by Srikar, 2026-09-26))
 - **Supersedes:** the initial Postgres + pgvector proposal (never merged)
 
 ## Context

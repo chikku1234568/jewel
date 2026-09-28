@@ -1,0 +1,15 @@
+%% name: 05-agent-loop
+flowchart TD
+    START((POST /ask)) --> A["Agent (model, user's key)<br/>question + tool results so far"]
+    A -->|"tool call, count below 4"| T{"which tool?"}
+    T -->|search_graph| SG["search_graph<br/>retriever on user's subgraph"]
+    T -->|read_document| RD["read_document<br/>only ids returned by search, owned by user"]
+    SG --> CNT["tool_calls_used + 1"]
+    RD --> CNT
+    CNT --> A
+    A -->|"answer, or 4 tool calls reached"| ANS["Answer<br/>citations = document ids + quotes from tool results"]
+    ANS --> END((END))
+
+    SG -. "SSE: tool call, args, summary<br/>+ highlight node/relationship ids" .-> SSE[["GET /ask/run_id/events"]]
+    RD -. "SSE: tool call, args, summary" .-> SSE
+    ANS -. "SSE: answer, citations" .-> SSE

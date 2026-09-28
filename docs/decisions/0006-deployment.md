@@ -1,31 +1,25 @@
 # 0006. Deployment
 
-- **Status:** Proposed (hosting undecided)
+- **Status:** Proposed (hosting is one of the three open items)
 
 ## Context
 
-Done means "a private URL". Components: static frontend, FastAPI backend, Neo4j, Redis,
-an LLM provider. Synthetic data only; access should be restricted, not public.
+Components: static frontend, FastAPI backend, Neo4j 5.x Community, Postgres, a local
+volume for uploaded files, Google OAuth (needs a registered redirect URI), and the xAI API
+called with each user's own key.
 
-## Proposed decision
+## Decided so far
 
-- **Local dev:** `infra/docker-compose.yml` (neo4j, redis, backend, frontend). Exists as a
-  placeholder now.
-- **Hosting:** undecided; options below.
+- **Local development:** `infra/docker-compose.yml` with Neo4j, Postgres, backend and
+  frontend. No cache service.
 
-## Options
+## Still open
 
-| Option | Frontend | Backend | Neo4j | Redis | Notes |
-|---|---|---|---|---|---|
-| A. PaaS mix | Vercel or Netlify | Render, Railway or Fly.io | Neo4j AuraDB Free, or a container on the same PaaS | Managed Redis free tier or a container | Least ops; free-tier limits and sleep behaviour to verify; GDS plugin availability on Aura to verify if we choose GDS |
-| B. Single VM | same host | same host | container | container | Run the compose stack on one small VM behind Caddy/nginx with HTTPS + basic auth; cheapest and closest to local |
-| C. Fly.io for everything | Fly static/app | Fly | Fly volume + container | Fly container | One platform; volumes needed for Neo4j data |
-
-"Private URL" can be enforced with HTTP basic auth at the proxy, an access-controlled tunnel
-(e.g. Cloudflare Access), or platform password protection (check plan requirements).
+Where the deployed instance runs. Any option must provide: persistent storage for Neo4j,
+Postgres and uploaded files; HTTPS (required for `Secure` cookies); and a stable
+callback URL for Google. Choosing a custom domain and a production password policy
+beyond Google and the session cookie are out of scope for this version.
 
 ## Open questions for review
 
-1. Budget: free tiers only, or a small paid VM acceptable?
-2. What does "private" need to mean: unguessable URL, a shared password, or SSO?
-3. Any provider preference or existing accounts?
+1. Where should the deployed instance be hosted?

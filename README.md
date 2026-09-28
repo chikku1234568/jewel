@@ -1,70 +1,54 @@
 # jewel
 
-**Pharmacotherapy regimen lab alert**: a showcase in which pasted notes and uploaded
-documents become episodes in a **temporal knowledge graph**, three **role-restricted
-agents** update it, and a question about drug administration is answered from
-relationships that are **valid now**, not from a text search.
+**A personal live knowledge graph.** Sign in with Google, upload your own PDF, `.txt` and
+`.md` files, and get a knowledge graph of them that you can click through. Save your own
+xAI API key and ask one agent questions: it searches your graph, the screen shows each
+step of the search and highlights what came back, and the answer quotes the passages it
+used. A text-search comparison shows what the same question gets from text chunks alone.
 
-> [!WARNING]
-> **Not for clinical use.** This is a technical showcase on a private URL. It is not a
-> medical device and not clinical advice. The patient is synthetic. Never add real
-> patient data to this repository.
+Answers quote your documents and are not medical, legal, or financial advice.
+
+The product is free: no billing, teams or sharing. Model calls use each user's own key.
 
 ## Status
 
-**Step 1: repository structure + architecture proposal.** Nothing is implemented beyond a
-FastAPI `/health` route, a placeholder frontend page with the not-for-clinical-use banner,
-and documented module stubs. The architecture is up for review.
-
-| Decision | Status |
-|---|---|
-| Graph store: Neo4j 5.x Community | Accepted |
-| Cache: Redis | Accepted |
-| Retrieval: HippoRAG-2-inspired temporal PPR | Proposed (pending user input) |
-| LangGraph orchestration | Proposed, for review |
-| Frontend (Vite + React + TS), deployment | Proposed |
-
-## The scenario in brief
-
-An enoxaparin 100 mg twice-daily order is signed. A later lab shows creatinine clearance
-below 30 mL/min but never names the drug. A frozen protocol rule closes the
-`PRESCRIBED_DOSE` relationship by setting `invalid_at` to the specimen time. Asked *"Is the
-current order for enoxaparin 100 mg twice daily valid for immediate administration?"*, the
-graph answers **no**; a naive RAG over the same notes says the order is fine.
+**Scaffold.** Structure, module docstrings, route names, docs and a placeholder page.
+Only `GET /health` is live. Google sign-in, uploads, extraction, the graph, the retriever
+and the agent are documented stubs, not implemented yet.
 
 ## Docs
 
-- [Problem statement](docs/problem-statement.md) (verbatim spec)
-- [Architecture proposal](docs/architecture.md) (diagrams, LangGraph design, schema, retrieval)
+- [Product spec](docs/problem-statement.md) (authoritative)
+- [Architecture](docs/architecture.md) (diagrams, settled decisions)
 - [Decision records](docs/decisions/)
-- [Open questions](docs/open-questions.md)
+- [Open questions](docs/open-questions.md) (three items)
 - [Rendered diagrams](docs/diagrams/)
 
 ## Repository layout
 
 ```text
-backend/    Python 3.11+ / FastAPI / (planned) LangGraph, managed with uv
-frontend/   Vite + React + TypeScript
-infra/      docker-compose for local dev (neo4j, redis, backend, frontend)
-data/demo/  the three synthetic demo episodes (not locked yet)
-docs/       problem statement, architecture, ADRs, diagrams, open questions
+backend/        Python 3.11+ / FastAPI / Pydantic, managed with uv
+frontend/       Vite + React + TypeScript placeholder page
+infra/          docker-compose for local dev (neo4j, postgres, backend, frontend)
+data/fixtures/  test-only fixture description (never loaded into an account)
+docs/           spec, architecture, ADRs, diagrams, open questions
 ```
 
-## Quickstart (placeholder)
+## Run what exists
 
 Requirements: [uv](https://docs.astral.sh/uv/), Node.js >= 20.19, Docker (optional).
 
 ```bash
 cp .env.example .env
 
-# backend
+# backend: health route + tests
 cd backend && uv sync && uv run pytest
 uv run uvicorn jewel.api.app:app --reload        # http://localhost:8000/health
 
-# frontend
+# frontend: placeholder page
 cd frontend && npm ci && npm run dev             # http://localhost:5173
 
-# or the whole stack (placeholder services)
+# or the placeholder stack
 docker compose -f infra/docker-compose.yml --env-file .env up --build
 ```
 

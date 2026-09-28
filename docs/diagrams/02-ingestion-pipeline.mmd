@@ -1,0 +1,15 @@
+%% name: 02-ingestion-pipeline
+flowchart TD
+    up["POST /documents<br/>PDF, txt or md, 20 MB cap, 50-page PDF cap"] --> store["Store bytes on local volume<br/>opaque path, row in Postgres<br/>status: stored"]
+    store --> key{"User has a<br/>saved key?"}
+    key -->|no| wait["status: waiting_for_key"]
+    wait -->|"key saved, user runs build"| build
+    key -->|yes| build["POST /documents/id/build"]
+    build --> p1["1. Parse to text<br/>DocumentParser: pypdf for PDF, txt and md as text<br/>status: parsing"]
+    p1 --> p2["2. Chunk text<br/>text-search index only, rows in Postgres"]
+    p2 --> p3["3. Extract entities + triples<br/>user's key, validated into the schema<br/>model output is data, never code or queries<br/>status: extracting"]
+    p3 --> p4["4. Embed document and each entity"]
+    p4 --> p5["5. Write Document, Entity, MENTIONS, RELATED_TO<br/>user_id on every node and relationship"]
+    p5 --> ready["status: ready"]
+    p1 & p2 & p3 & p4 & p5 -.->|error| failed["status: failed<br/>file kept, error string shown, retry"]
+    failed -.->|retry| build

@@ -1,32 +1,25 @@
-# 0005. Frontend: Vite + React + TypeScript
+# 0005. Frontend: Vite + React + TypeScript, Cytoscape.js for the graph
 
-- **Status:** Proposed
+- **Status:** Accepted (settled by `docs/problem-statement.md`, 2026-09-28; previously Proposed)
 
 ## Context
 
-TypeScript is required. The UI is a single page: ingest panel, five-step progress list
-(SSE), chat with side-by-side answers, a graph view showing the closed edge, and a
-permanent not-for-clinical-use banner. No accounts, no SEO, no server rendering needed.
+TypeScript is required. After sign-in the interface is one page with three regions
+(Documents, Graph, Ask) plus Key and Account, a Server-Sent Events trace, and a clickable
+graph that the agent can highlight. No server rendering or SEO is needed.
 
-## Proposed decision
+## Decision
 
-**Vite + React + TypeScript** single-page app (scaffolded in `frontend/`). Graph view with
-**Cytoscape.js** (mature, good for small labelled graphs, can style closed edges e.g. dashed
-with an `invalid_at` label).
-
-## Alternatives
-
-- **Next.js:** routing, server components, easy Vercel deploy; unnecessary weight for one
-  page, and the backend is already FastAPI.
-- **react-force-graph** instead of Cytoscape.js: attractive force layout, less control over
-  labelled, styled edges.
+Keep the existing **Vite + React + TypeScript** single-page app in `frontend/`. The graph
+view uses **Cytoscape.js** (pan/zoom, labelled nodes, predicate-labelled edges, click
+details, highlight, delete). Cytoscape.js is added in the pass that implements the graph;
+the scaffold page shows an empty Graph region.
 
 ## Consequences
 
 - Static build (`vite build`) deploys to any static host; API URL via `VITE_API_BASE_URL`.
+- Session cookies are `httpOnly`, so the frontend never handles tokens or keys.
 
 ## Open questions for review
 
-1. Vite SPA acceptable, or prefer Next.js?
-2. Cytoscape.js or react-force-graph for the graph view?
-3. Any UI kit preference (none, Tailwind, shadcn/ui, MUI)?
+None; hosting is tracked in [0006](0006-deployment.md).

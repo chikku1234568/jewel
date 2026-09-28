@@ -1,50 +1,49 @@
+%% name: 01-system-overview
 flowchart LR
-    user(["Reviewer in browser<br/>private showcase URL"])
+    user(["Signed-in user<br/>browser"])
 
     subgraph FE["Frontend: Vite + React + TypeScript"]
-        banner["Not-for-clinical-use banner"]
-        ingestUI["Ingest panel<br/>paste text / upload PDF"]
-        progressUI["Progress list<br/>5 steps via SSE"]
-        chatUI["Chat<br/>graph answer vs naive RAG"]
-        graphUI["Graph view<br/>Cytoscape.js, closed edge visible"]
+        advice["Advice sentence"]
+        account["Account + Key"]
+        docsUI["Documents<br/>library, status, retry"]
+        graphUI["Graph<br/>Cytoscape.js, highlight"]
+        askUI["Ask<br/>trace, answer, citations,<br/>text-search comparison"]
     end
 
     subgraph BE["Backend: FastAPI"]
-        api["REST + SSE routes<br/>/episodes /runs /ask /graph"]
-        ingest["Ingestion<br/>episode = author, time, raw text"]
-        parser["DocumentParser<br/>pypdf / pdfplumber"]
-        subgraph LG["LangGraph run"]
-            nParse["parse"]
-            nEhr["ehr_order_agent"]
-            nLab["lab_monitor_agent"]
-            nPharm["pharmacologist_agent"]
-            nAns["answer"]
-        end
-        rules["Frozen rules<br/>deterministic code"]
-        writer["GraphWriter<br/>per-agent permission guard"]
-        retr["Temporal retrieval<br/>PPR over edges valid at t"]
-        rag["Naive RAG baseline<br/>raw episode text"]
-        llm["LLM + embeddings<br/>provider-agnostic"]
+        authR["Auth + sessions<br/>Google OAuth"]
+        keysR["API key<br/>encrypt, check, delete"]
+        docsR["Documents<br/>upload, build, delete"]
+        ingest["Ingestion pipeline<br/>parse, chunk, extract, embed, write"]
+        graphR["Graph routes<br/>subgraph, delete"]
+        agent["LangGraph agent<br/>max 4 tool calls"]
+        tools["Tools<br/>search_graph, read_document"]
+        retr["Graph retriever<br/>PageRank in networkx"]
+        cmp["Text-search comparison"]
+        llm["OpenAI-compatible client<br/>user's key"]
     end
 
-    neo4j[("Neo4j 5.x Community<br/>temporal KG + Episode nodes<br/>+ vector index")]
-    redis[("Redis<br/>LLM / embedding / retrieval cache")]
-    provider[["LLM provider<br/>TBD"]]
+    google[["Google OAuth"]]
+    xai[["xAI API<br/>api.x.ai/v1"]]
+    pg[("Postgres<br/>users, sessions, keys (ciphertext),<br/>documents, chunks, runs")]
+    neo[("Neo4j 5.x Community<br/>Document + Entity graph<br/>user_id on everything")]
+    vol[("Local volume<br/>file bytes")]
 
     user --> FE
-    FE -->|HTTP / SSE| api
-    api --> ingest
-    ingest --> parser
-    ingest -->|Episode nodes| neo4j
-    api --> LG
-    nParse --> nEhr --> nLab --> nPharm --> nAns
-    nPharm --> rules
-    nEhr & nLab & nPharm --> writer
-    writer -->|Cypher writes| neo4j
-    nAns --> retr & rag
-    retr -->|time-filtered reads, vector search| neo4j
-    rag -->|episode text, vector search| neo4j
-    nParse & nPharm & nAns & retr & rag --> llm
-    llm --> provider
-    llm <-->|cache| redis
-    retr <-->|cache| redis
+    FE -->|"HTTP + session cookie, SSE"| BE
+    authR <--> google
+    authR --> pg
+    keysR --> pg
+    docsR --> vol
+    docsR --> pg
+    docsR --> ingest
+    ingest --> neo
+    ingest --> pg
+    graphR --> neo
+    agent --> tools
+    tools --> retr
+    tools --> neo
+    retr --> neo
+    cmp --> pg
+    ingest & agent & retr & cmp & keysR --> llm
+    llm --> xai

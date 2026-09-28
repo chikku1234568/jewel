@@ -1,6 +1,8 @@
 # 0003. Cache: Redis
 
-- **Status:** Accepted (decided by Srikar, 2026-09-26)
+> **Superseded (2026-09-28)** by [0010](0010-redis-dropped-this-version.md). This version has no cache. Kept for history only; not part of the active decision set.
+
+- **Status:** Superseded by [0010](0010-redis-dropped-this-version.md) on 2026-09-28 (previously: Accepted (decided by Srikar, 2026-09-26))
 
 ## Context
 

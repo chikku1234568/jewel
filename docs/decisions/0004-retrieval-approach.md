@@ -1,6 +1,8 @@
 # 0004. Retrieval: HippoRAG-2-inspired temporal Personalized PageRank
 
-- **Status:** Proposed. **Zeus's suggestion, pending user input.** Srikar will bring his
+> **Superseded (2026-09-28)** by [0012](0012-retrieval-graph-ppr.md). Retrieval is now settled by the product spec. Kept for history only; not part of the active decision set.
+
+- **Status:** Superseded by [0012](0012-retrieval-graph-ppr.md) on 2026-09-28 (previously: Proposed. **Zeus's suggestion, pending user input.** Srikar will bring his)
   own ideas on dynamic retrievers; this ADR is a starting point, not a decision.
 
 ## Context
