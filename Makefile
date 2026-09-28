@@ -30,11 +30,12 @@ dev-backend: ## Run FastAPI with reload on :8000
 dev-frontend: ## Run Vite dev server on :5173
 	cd frontend && npm run dev
 
-up: ## docker compose up (neo4j, redis, backend, frontend)
+up: ## docker compose up (neo4j, postgres, backend, frontend)
 	docker compose -f infra/docker-compose.yml --env-file .env up --build
 
 down: ## docker compose down
 	docker compose -f infra/docker-compose.yml down
 
-diagrams: ## Render docs/diagrams/*.mmd to PNG (needs Node + Chrome)
-	for f in docs/diagrams/*.mmd; do npx -y @mermaid-js/mermaid-cli -i $$f -o $${f%.mmd}.png -p docs/diagrams/puppeteer.json -b white -s 2; done
+diagrams: ## Extract Mermaid blocks from docs/architecture.md and render PNGs (needs Node + Chrome)
+	python3 docs/diagrams/extract.py
+	for f in docs/diagrams/*.mmd; do npx -y -p @mermaid-js/mermaid-cli mmdc -i $$f -o $${f%.mmd}.png -p docs/diagrams/puppeteer.json -b white -s 2 || exit 1; done

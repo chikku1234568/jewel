@@ -27,6 +27,7 @@ frontend/dist/
 *.tsbuildinfo
 npm-debug.log*
 
-# Local data (demo episodes are committed explicitly under data/demo)
+# Local data (uploaded files live on a local volume; fixtures are committed under data/fixtures)
+data/uploads/
 *.sqlite
 *.db
