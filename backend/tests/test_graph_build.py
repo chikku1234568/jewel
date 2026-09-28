@@ -7,6 +7,7 @@ import pytest
 from jewel.agents.graph import Decision, ToolRequest, run_agent
 from jewel.agents.tools import ToolError, read_document
 from jewel.ingestion.chunking import chunk_text
+from jewel.ingestion.live import build_parsed_text
 from jewel.ingestion.pipeline import ParsedDocument, build_document
 from jewel.kg.extraction import ExtractedEntity, ExtractedTriple, Extraction, parse_extraction
 from jewel.kg.memory_store import MemoryGraphStore
@@ -80,6 +81,51 @@ def _build(
         store,
         HashingEmbedder(),
     )
+
+
+def test_messy_model_json_keeps_the_usable_triple() -> None:
+    payload = """
+    Here is the graph:
+    {"entities": ["alarm code", {"name": "Sam", "type": "event"}],
+     "relationships": [
+        {"head": "alarm code", "relation": "is", "tail": "4412", "quote": ""},
+        {"subject": "nope"}
+     ]}
+    """
+    parsed = parse_extraction(payload, JAN_TEXT)
+    pairs = [(triple.subject, triple.object) for triple in parsed.triples]
+    assert pairs == [("alarm code", "4412")]
+    sam = next(entity for entity in parsed.entities if entity.name == "Sam")
+    assert sam.type.value == "other"
+
+
+def test_a_long_document_is_extracted_in_pieces() -> None:
+    seen: list[int] = []
+
+    class Chat:
+        def complete(self, system: str, user: str) -> str:
+            seen.append(len(user))
+            return (
+                '{"entities":[{"name":"alarm code","type":"concept"}],'
+                '"triples":[{"subject":"alarm code","predicate":"is","object":"4412",'
+                '"quote":"The alarm code is 4412."}]}'
+            )
+
+    text = (JAN_TEXT + " ") * 80
+    store = MemoryGraphStore()
+    build_parsed_text(
+        document_id="paper",
+        user_id=USER,
+        filename="paper.txt",
+        text=text,
+        document_date=None,
+        chat=Chat(),
+        embedder=HashingEmbedder(),
+        store=store,
+    )
+    assert len(seen) > 1
+    assert max(seen) < len(text)
+    assert store.subgraph(USER).triples
 
 
 def test_quote_must_be_copied_from_the_document() -> None:

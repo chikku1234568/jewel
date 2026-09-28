@@ -49,6 +49,8 @@ class DocumentSummary(BaseModel):
     uploaded_at: datetime
     status: DocumentStatus
     error: str | None = None
+    build_done: int = 0
+    build_total: int = 0
 
 
 class DocumentDetail(DocumentSummary):

@@ -37,6 +37,67 @@ body {
   color: #57606a;
 }
 
+.embedding {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.embedding label {
+  display: block;
+  margin: 0.4rem 0;
+}
+
+.embedding input,
+.embedding select {
+  display: block;
+  width: 100%;
+  margin-top: 0.2rem;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.progress progress {
+  width: 8rem;
+}
+
+.nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  list-style: none;
+}
+
+.node {
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #f6f8fa;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+}
+
+.node.selected {
+  border-color: #0969da;
+  background: #ddf4ff;
+}
+
+.quote {
+  border-left: 3px solid #0969da;
+  padding-left: 0.75rem;
+}
+
+.triples,
+.trace {
+  padding-left: 1.2rem;
+}
+
 textarea {
   width: 100%;
   box-sizing: border-box;

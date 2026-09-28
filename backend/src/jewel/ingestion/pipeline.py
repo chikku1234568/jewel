@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from jewel.kg.extraction import Extraction
-from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.base import EmbeddingModel
 
 
@@ -24,7 +23,7 @@ class ParsedDocument:
 def build_document(
     document: ParsedDocument,
     extraction: Extraction,
-    store: MemoryGraphStore,
+    store,
     embedder: EmbeddingModel,
 ) -> None:
     """Embed this document's text, entities, and facts, then write them."""
@@ -45,4 +44,5 @@ def build_document(
         entity_embeddings=entity_embeddings,
         triple_embeddings=triple_embeddings,
         document_date=document.document_date,
+        embedding_model=getattr(embedder, "model", ""),
     )

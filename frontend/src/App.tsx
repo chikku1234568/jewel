@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import { Account } from './components/Account'
 import { AdviceNotice } from './components/AdviceNotice'
 import { DocumentLibrary } from './components/DocumentLibrary'
+import {
+  AgentPicker,
+  EmbeddingPicker,
+  ExtractionPicker,
+  loadAgentChoice,
+  loadEmbeddingChoice,
+  loadExtractionChoice,
+} from './components/EmbeddingPicker'
+import { AskPanel, GraphPanel } from './components/GraphAsk'
 import { getMe, logout, type Me } from './lib/api'
 
 /** Reads and removes `?signin_error=...` left by a failed Google callback. */
@@ -25,6 +34,10 @@ function App() {
   const [signingOut, setSigningOut] = useState(false)
   const [signInError] = useState(takeSignInError)
   const [sessionError, setSessionError] = useState<string | null>(null)
+  const [graphKey, setGraphKey] = useState(0)
+  const [embedding, setEmbedding] = useState(loadEmbeddingChoice)
+  const [extraction, setExtraction] = useState(loadExtractionChoice)
+  const [agent, setAgent] = useState(loadAgentChoice)
 
   useEffect(() => {
     getMe()
@@ -73,7 +86,16 @@ function App() {
       <section className="region" aria-labelledby="documents-title">
         <h2 id="documents-title">Documents</h2>
         {me ? (
-          <DocumentLibrary key={me.email} />
+          <>
+            <ExtractionPicker value={extraction} onChange={setExtraction} />
+            <EmbeddingPicker value={embedding} onChange={setEmbedding} />
+            <DocumentLibrary
+              key={me.email}
+              embedding={embedding}
+              extraction={extraction}
+              onBuilt={() => setGraphKey((value) => value + 1)}
+            />
+          </>
         ) : (
           <p className="empty">
             Sign in to upload a PDF, text, Markdown or Word file to your library.
@@ -83,25 +105,23 @@ function App() {
 
       <section className="region" aria-labelledby="graph-title">
         <h2 id="graph-title">Graph</h2>
-        <p className="empty">
-          Your graph appears here after a file is built: the people, places and ideas in
-          your documents, linked by the sentences that connect them. Click a node to read the
-          sentence it came from.
-        </p>
+        {me ? (
+          <GraphPanel refreshKey={graphKey} />
+        ) : (
+          <p className="empty">Sign in to see your graph.</p>
+        )}
       </section>
 
       <section className="region" aria-labelledby="ask-title">
         <h2 id="ask-title">Ask</h2>
-        <textarea
-          aria-label="Question"
-          placeholder="Ask a question about your documents"
-          disabled
-          rows={3}
-        />
-        <p className="hint">
-          Asking is not available yet. You will see each step of the search and the
-          passages the answer quotes.
-        </p>
+        {me ? (
+          <>
+            <AgentPicker value={agent} onChange={setAgent} />
+            <AskPanel embedding={embedding} agent={agent} />
+          </>
+        ) : (
+          <p className="empty">Sign in to ask a question.</p>
+        )}
       </section>
     </main>
   )

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ACCEPTED_FILE_TYPES,
+  buildDocument,
   deleteDocument,
+  stopBuild,
   getDocument,
   listDocuments,
   uploadDocument,
   type DocumentDetail,
   type DocumentSummary,
+  type EmbeddingChoice,
+  type ExtractionChoice,
 } from '../lib/api'
 
 const STATUS_LABELS: Record<DocumentSummary['status'], string> = {
@@ -28,10 +32,19 @@ function message(error: unknown): string {
 }
 
 /** The signed-in user's library: upload, list with status, open extracted text, delete. */
-export function DocumentLibrary() {
+export function DocumentLibrary({
+  embedding,
+  extraction,
+  onBuilt,
+}: {
+  embedding: EmbeddingChoice
+  extraction: ExtractionChoice
+  onBuilt?: () => void
+}) {
   const [documents, setDocuments] = useState<DocumentSummary[] | null>(null)
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [buildingId, setBuildingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<DocumentDetail | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -57,6 +70,17 @@ export function DocumentLibrary() {
       cancelled = true
     }
   }, [])
+
+  const onBuiltRef = useRef(onBuilt)
+  onBuiltRef.current = onBuilt
+  const building = documents?.some((doc) => doc.status === 'extracting') ?? false
+  useEffect(() => {
+    if (!building) return
+    const timer = window.setInterval(() => {
+      void refresh().then(() => onBuiltRef.current?.())
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [building, refresh])
 
   async function onUpload(event: FormEvent) {
     event.preventDefault()
@@ -84,6 +108,29 @@ export function DocumentLibrary() {
     }
   }
 
+  async function onBuild(doc: DocumentSummary) {
+    setBuildingId(doc.id)
+    setError(null)
+    try {
+      await buildDocument(doc.id, embedding, extraction)
+      await refresh()
+    } catch (err) {
+      setError(message(err))
+    } finally {
+      setBuildingId(null)
+    }
+  }
+
+  async function onStop(doc: DocumentSummary) {
+    setError(null)
+    try {
+      await stopBuild(doc.id)
+      await refresh()
+    } catch (err) {
+      setError(message(err))
+    }
+  }
+
   async function onDelete(doc: DocumentSummary) {
     if (!window.confirm(`Delete ${doc.filename}?`)) return
     setError(null)
@@ -99,6 +146,10 @@ export function DocumentLibrary() {
 
   return (
     <div>
+      <p className="hint">
+        Keep PDFs to about 20 pages. A longer file still uploads, but the graph build is slow
+        and less reliable.
+      </p>
       <form className="upload" onSubmit={onUpload}>
         <input
           ref={inputRef}
@@ -111,7 +162,7 @@ export function DocumentLibrary() {
           {uploading ? 'Uploading…' : 'Upload'}
         </button>
       </form>
-      <p className="hint">PDF (up to 50 pages), text, Markdown or Word (.docx), up to 20 MB.</p>
+      <p className="hint">PDF, text, Markdown or Word (.docx), up to 20 MB. PDFs over 50 pages are rejected.</p>
 
       {error ? (
         <p className="error" role="alert">
@@ -146,6 +197,20 @@ export function DocumentLibrary() {
                   <span className={`status status-${doc.status}`}>
                     {STATUS_LABELS[doc.status] ?? doc.status}
                   </span>
+                  {doc.status === 'extracting' ? (
+                    <div className="progress">
+                      {(doc.build_total ?? 0) > 0 ? (
+                        <progress value={doc.build_done ?? 0} max={doc.build_total} />
+                      ) : (
+                        <progress />
+                      )}
+                      <span className="hint">
+                        {(doc.build_total ?? 0) > 0
+                          ? `${doc.build_done ?? 0} / ${doc.build_total} passages`
+                          : 'Building…'}
+                      </span>
+                    </div>
+                  ) : null}
                   {doc.status === 'failed' && doc.error ? (
                     <div className="error">{doc.error}</div>
                   ) : null}
@@ -154,6 +219,22 @@ export function DocumentLibrary() {
                   <button type="button" onClick={() => void onOpen(doc.id)}>
                     Open
                   </button>
+                  {doc.status === 'extracting' ? (
+                    <button type="button" onClick={() => void onStop(doc)}>
+                      Stop
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={
+                        buildingId !== null ||
+                        !['parsed', 'ready', 'failed'].includes(doc.status)
+                      }
+                      onClick={() => void onBuild(doc)}
+                    >
+                      {buildingId === doc.id ? 'Building…' : 'Build graph'}
+                    </button>
+                  )}
                   <button type="button" onClick={() => void onDelete(doc)}>
                     Delete
                   </button>

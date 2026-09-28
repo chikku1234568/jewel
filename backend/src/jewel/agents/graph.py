@@ -81,7 +81,9 @@ def _call_tool(
         result.returned_document_ids = sorted(allowed)
         result.highlight_entity_ids = found.entity_ids
         result.highlight_relationship_ids = found.relationship_ids
-        summary = f"{len(found.documents)} documents, {len(found.triples)} triples"
+        docs = ", ".join(f"{hit.filename} id={hit.document_id}" for hit in found.documents[:8])
+        quotes = " | ".join(triple.quote for triple in found.triples[:8])
+        summary = f"documents: {docs}. quotes: {quotes}"
         observations.append(summary)
         return summary
     if tool.name == "read_document":

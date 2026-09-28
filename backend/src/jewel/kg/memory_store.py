@@ -39,6 +39,7 @@ class MemoryGraphStore:
         entity_embeddings: dict[str, list[float]],
         triple_embeddings: list[list[float]],
         document_date=None,
+        embedding_model: str = "",
     ) -> None:
         """Write one document. Earlier documents for this user stay as they are."""
         self.documents[(user_id, document_id)] = GraphDocument(
@@ -48,6 +49,7 @@ class MemoryGraphStore:
             text=text,
             embedding=embedding,
             document_date=document_date,
+            embedding_model=embedding_model,
         )
         self.mentions = [
             mention

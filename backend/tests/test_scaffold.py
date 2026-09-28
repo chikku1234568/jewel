@@ -13,16 +13,17 @@ MOUNTED = {
     "/me",
     "/documents",
     "/documents/{document_id}",
+    "/documents/{document_id}/build",
+    "/documents/{document_id}/stop",
+    "/graph",
+    "/ask",
 }
 
 
 def test_only_this_pass_routes_are_mounted() -> None:
     paths = set(app.openapi()["paths"])
     assert paths == MOUNTED
-    # Other passes own these; they must not be mounted here.
-    for path in paths:
-        assert not path.startswith(("/ask", "/graph", "/me/api-key"))
-        assert not path.endswith("/build")
+    assert not any(path.startswith("/me/api-key") for path in paths)
 
 
 def test_llm_base_url_is_xai_and_model_ids_are_not_hardcoded() -> None:

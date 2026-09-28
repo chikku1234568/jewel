@@ -34,6 +34,8 @@ export interface DocumentSummary {
   uploaded_at: string
   status: DocumentStatus
   error: string | null
+  build_done?: number
+  build_total?: number
 }
 
 export interface DocumentDetail extends DocumentSummary {
@@ -111,6 +113,120 @@ export async function getDocument(id: string): Promise<DocumentDetail> {
   return (await response.json()) as DocumentDetail
 }
 
+export async function stopBuild(id: string): Promise<DocumentSummary> {
+  const response = await request(`/documents/${encodeURIComponent(id)}/stop`, {
+    method: 'POST',
+  })
+  return (await response.json()) as DocumentSummary
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   await request(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export interface EmbeddingChoice {
+  provider: 'local' | 'api'
+  model: string
+  base_url: string
+  api_key: string
+}
+
+export interface ExtractionChoice {
+  provider: 'local' | 'api'
+  model: string
+  base_url: string
+  api_key: string
+}
+
+export interface AgentChoice {
+  model: string
+  base_url: string
+  api_key: string
+}
+
+export const AGENT_MODELS = [
+  { id: 'kimi-k2.6', label: 'Kimi kimi-k2.6', base_url: 'https://api.moonshot.ai/v1' },
+  { id: 'kimi-k3', label: 'Kimi kimi-k3', base_url: 'https://api.moonshot.ai/v1' },
+  { id: 'gpt-4o-mini', label: 'OpenAI gpt-4o-mini', base_url: 'https://api.openai.com/v1' },
+]
+
+export const LOCAL_EMBEDDINGS = [
+  { id: 'BAAI/bge-base-en-v1.5', label: 'BGE base — local, balanced' },
+  { id: 'BAAI/bge-large-en-v1.5', label: 'BGE large — local, stronger English' },
+  { id: 'nomic-ai/nomic-embed-text-v1.5', label: 'Nomic v1.5 — local, long passages' },
+  { id: 'intfloat/multilingual-e5-large', label: 'E5 large — local, other languages' },
+]
+
+export const API_EMBEDDINGS = [
+  { id: 'text-embedding-3-small', label: 'OpenAI text-embedding-3-small' },
+  { id: 'text-embedding-3-large', label: 'OpenAI text-embedding-3-large' },
+]
+
+export const LOCAL_EXTRACTION = [
+  { id: 'qwen2.5:7b-instruct', label: 'Qwen 2.5 7B — on this computer' },
+]
+
+export const API_EXTRACTION = [
+  { id: 'gpt-4o-mini', label: 'OpenAI gpt-4o-mini', base_url: 'https://api.openai.com/v1' },
+  { id: 'kimi-k2.6', label: 'Kimi kimi-k2.6', base_url: 'https://api.moonshot.ai/v1' },
+]
+
+export async function buildDocument(
+  id: string,
+  embedding: EmbeddingChoice,
+  extraction: ExtractionChoice,
+): Promise<DocumentSummary> {
+  const response = await request(`/documents/${encodeURIComponent(id)}/build`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...embedding, extraction }),
+  })
+  return (await response.json()) as DocumentSummary
+}
+
+export interface GraphEntity {
+  id: string
+  name: string
+  type: string
+}
+
+export interface GraphTriple {
+  id: string
+  source_id: string
+  target_id: string
+  predicate: string
+  quote: string
+  document_id: string
+}
+
+export interface GraphView {
+  documents: { id: string; filename: string }[]
+  entities: GraphEntity[]
+  triples: GraphTriple[]
+}
+
+export async function getGraph(): Promise<GraphView> {
+  const response = await request('/graph')
+  return (await response.json()) as GraphView
+}
+
+export interface AskResult {
+  answer: string
+  tool_calls_used: number
+  trace: { name: string; summary: string }[]
+  highlight_entity_ids: string[]
+  highlight_relationship_ids: string[]
+}
+
+export async function askQuestion(
+  question: string,
+  embedding: EmbeddingChoice,
+  agent: AgentChoice,
+): Promise<AskResult> {
+  const response = await request('/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, ...embedding, agent }),
+  })
+  return (await response.json()) as AskResult
 }

@@ -17,6 +17,7 @@ class GraphDocument:
     text: str
     embedding: list[float]
     document_date: datetime | None = None
+    embedding_model: str = ""
 
 
 @dataclass

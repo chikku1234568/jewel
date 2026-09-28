@@ -45,7 +45,8 @@ def retrieve(
 ) -> RetrievalResult:
     """Search ``user_id``'s graph. ``chat`` filters triples and does not answer."""
     subgraph = store.subgraph(user_id)
-    query_vector = embedder.embed([query])[0]
+    embed_query = getattr(embedder, "embed_query", None)
+    query_vector = embed_query(query) if embed_query else embedder.embed([query])[0]
     triples = [
         triple
         for triple in subgraph.triples

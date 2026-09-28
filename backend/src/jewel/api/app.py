@@ -31,7 +31,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from jewel import __version__
-from jewel.api.routes import auth, documents, health
+from jewel.api.routes import ask, auth, documents, graph, health
 from jewel.config import Settings, get_settings
 from jewel.db.postgres import apply_schema, connect
 
@@ -48,7 +48,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 apply_schema(conn)
         else:
             logger.warning("DATABASE_URL is not set; sign-in and documents are unavailable")
-        yield
+        driver = _neo4j_driver(settings)
+        app.state.neo4j = driver
+        try:
+            yield
+        finally:
+            if driver is not None:
+                driver.close()
 
     app = FastAPI(
         title="jewel",
@@ -67,7 +73,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(documents.router)
+    app.include_router(graph.router)
+    app.include_router(ask.router)
     return app
+
+
+def _neo4j_driver(settings: Settings):
+    if not settings.neo4j_password:
+        logger.warning("NEO4J_PASSWORD is not set; graph build is unavailable")
+        return None
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+        driver.verify_connectivity()
+        return driver
+    except Exception:
+        logger.exception("Neo4j is not reachable")
+        return None
 
 
 app = create_app()

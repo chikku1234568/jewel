@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.32",  # multipart uploads for POST /documents
     "pyjwt[crypto]>=2.15.0",  # Google ID token verification (jewel.auth.google)
     "networkx>=3.3",  # graph for Personalized PageRank; the walk itself is local
+    "fastembed>=0.7",  # local BAAI/bge-base-en-v1.5 embeddings
 ]
 
 [dependency-groups]

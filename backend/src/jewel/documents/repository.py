@@ -7,7 +7,7 @@ import psycopg
 
 from jewel.documents.models import DocumentStatus
 
-_SUMMARY_COLUMNS = "id, filename, uploaded_at, status, error"
+_SUMMARY_COLUMNS = "id, filename, uploaded_at, status, error, build_done, build_total"
 _DETAIL_COLUMNS = f"{_SUMMARY_COLUMNS}, media_type, document_date, extracted_text"
 
 
@@ -33,6 +33,43 @@ def mark_parsed(conn: psycopg.Connection, document_id: uuid.UUID, text: str) -> 
     conn.execute(
         "UPDATE documents SET status = %s, extracted_text = %s, error = NULL WHERE id = %s",
         (DocumentStatus.PARSED, text, document_id),
+    )
+
+
+def mark_extracting(conn: psycopg.Connection, document_id: uuid.UUID) -> None:
+    conn.execute(
+        """
+        UPDATE documents
+        SET status = %s, error = NULL, build_done = 0, build_total = 0
+        WHERE id = %s
+        """,
+        (DocumentStatus.EXTRACTING, document_id),
+    )
+
+
+def set_build_progress(
+    conn: psycopg.Connection, document_id: uuid.UUID, done: int, total: int
+) -> None:
+    conn.execute(
+        """
+        UPDATE documents SET build_done = %s, build_total = %s
+        WHERE id = %s AND status = %s
+        """,
+        (done, total, document_id, DocumentStatus.EXTRACTING),
+    )
+
+
+def mark_ready(conn: psycopg.Connection, document_id: uuid.UUID) -> None:
+    conn.execute(
+        "UPDATE documents SET status = %s, error = NULL WHERE id = %s",
+        (DocumentStatus.READY, document_id),
+    )
+
+
+def mark_build_failed(conn: psycopg.Connection, document_id: uuid.UUID, error: str) -> None:
+    conn.execute(
+        "UPDATE documents SET status = %s, error = %s WHERE id = %s",
+        (DocumentStatus.FAILED, error, document_id),
     )
 
 

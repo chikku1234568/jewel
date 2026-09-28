@@ -37,6 +37,20 @@ CREATE TABLE IF NOT EXISTS documents (
     status          text NOT NULL CHECK (
         status IN ('stored', 'parsing', 'parsed', 'failed', 'extracting', 'ready')
     ),
-    error           text
+    error           text,
+    build_done      integer NOT NULL DEFAULT 0,
+    build_total     integer NOT NULL DEFAULT 0
 );
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_done integer NOT NULL DEFAULT 0;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_total integer NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS documents_user_uploaded_idx ON documents (user_id, uploaded_at DESC);
+
+-- Raw model output for one passage. Keyed by model, prompt, generation settings, and the
+-- exact passage text. Shared across users: the same passage extracts the same triples.
+-- The source text is not stored again; documents.extracted_text already has the file.
+CREATE TABLE IF NOT EXISTS extraction_cache (
+    cache_key   text PRIMARY KEY,
+    model       text NOT NULL,
+    response    text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
