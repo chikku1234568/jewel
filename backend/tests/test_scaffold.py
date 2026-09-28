@@ -5,9 +5,24 @@ from jewel.config import LLM_BASE_URL, Settings
 from jewel.documents.models import DocumentStatus
 from jewel.kg.schema import NodeLabel, RelationshipType
 
+MOUNTED = {
+    "/health",
+    "/auth/google",
+    "/auth/google/callback",
+    "/auth/logout",
+    "/me",
+    "/documents",
+    "/documents/{document_id}",
+}
 
-def test_only_health_is_mounted() -> None:
-    assert set(app.openapi()["paths"]) == {"/health"}
+
+def test_only_this_pass_routes_are_mounted() -> None:
+    paths = set(app.openapi()["paths"])
+    assert paths == MOUNTED
+    # Other passes own these; they must not be mounted here.
+    for path in paths:
+        assert not path.startswith(("/ask", "/graph", "/me/api-key"))
+        assert not path.endswith("/build")
 
 
 def test_llm_base_url_is_xai_and_model_ids_are_not_hardcoded() -> None:
@@ -26,9 +41,10 @@ def test_graph_vocabulary() -> None:
 def test_document_status_values() -> None:
     assert [s.value for s in DocumentStatus] == [
         "stored",
-        "waiting_for_key",
         "parsing",
+        "parsed",
+        "failed",
         "extracting",
         "ready",
-        "failed",
     ]
+    assert "waiting_for_key" not in {s.value for s in DocumentStatus}

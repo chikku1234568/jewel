@@ -1,5 +1,11 @@
-"""Plain-text and Markdown parser (stub).
+"""Plain-text and Markdown parsing: UTF-8 (a leading BOM is dropped), kept as-is."""
 
-TODO(later pass): decode ``.txt`` and ``.md`` as UTF-8 (with a clear error otherwise)
-and keep the text as-is so quotes and offsets match the stored file.
-"""
+from jewel.parsing.base import ParseError
+
+
+class TextParser:
+    def extract_text(self, data: bytes, filename: str) -> str:
+        try:
+            return data.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ParseError("File is not valid UTF-8 text") from exc

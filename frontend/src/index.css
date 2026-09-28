@@ -42,3 +42,105 @@ textarea {
   box-sizing: border-box;
   font: inherit;
 }
+
+.muted {
+  color: #57606a;
+}
+
+.error {
+  color: #cf222e;
+}
+
+.button,
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: inherit;
+  padding: 0.3rem 0.75rem;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.upload {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.library {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.library th,
+.library td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #d0d7de;
+  vertical-align: top;
+}
+
+.library .actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.library .actions button + button {
+  margin-left: 0.25rem;
+}
+
+.status-parsed,
+.status-ready {
+  color: #1a7f37;
+}
+
+.status-failed {
+  color: #cf222e;
+}
+
+.viewer {
+  margin-top: 1rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+.viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.extracted {
+  white-space: pre-wrap;
+  max-height: 24rem;
+  overflow: auto;
+  font-size: 0.9rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

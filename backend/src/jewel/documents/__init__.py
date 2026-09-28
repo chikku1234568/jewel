@@ -1,1 +1,1 @@
-"""Uploaded documents: records, status values, limits, and local file storage."""
+"""Uploaded documents: status contract, limits, file storage, rows, and the upload flow."""

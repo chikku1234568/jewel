@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     google_client_id: str = Field(default="", validation_alias="GOOGLE_CLIENT_ID")
     google_client_secret: str = Field(default="", validation_alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: str = Field(default="", validation_alias="GOOGLE_REDIRECT_URI")
+    # Where the browser is sent after sign-in; also the single allowed CORS origin.
+    frontend_url: str = Field(
+        default="http://localhost:5173", validation_alias="JEWEL_FRONTEND_URL"
+    )
 
     # Server-side sessions and encryption of user API keys at rest.
     session_secret: str = Field(default="", validation_alias="SESSION_SECRET")

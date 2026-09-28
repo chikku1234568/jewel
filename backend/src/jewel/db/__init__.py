@@ -1,1 +1,1 @@
-"""Postgres: accounts, sessions, document rows, ciphertext keys, and chunk rows."""
+"""Postgres: users, sessions, OAuth state, and document rows (``schema.sql``)."""

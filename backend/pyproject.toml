@@ -6,16 +6,19 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Srikar Sribhashyam" }]
 license = { text = "Proprietary (private repository; licence TBD)" }
-# Only libraries the scaffold imports, plus the clients for the two decided stores.
-# The Neo4j driver and the Postgres client are declared because the stores are decided
-# (ADR 0011, ADR 0009); no stub imports them yet.
+# Runtime dependencies. The Neo4j driver is declared because the graph store is decided
+# (ADR 0011) but nothing imports it yet.
 dependencies = [
     "fastapi>=0.115",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "uvicorn[standard]>=0.30",
     "neo4j>=5.20",  # graph store, declared only (not imported yet)
-    "psycopg[binary]>=3.2",  # app data in Postgres, declared only (not imported yet)
+    "psycopg[binary]>=3.2",  # Postgres: users, sessions, documents (jewel.db)
+    "pypdf>=6.19.0",  # PDF text extraction and page count (jewel.parsing.pdf)
+    "python-docx>=1.2.0",  # .docx text extraction (jewel.parsing.docx)
+    "python-multipart>=0.0.32",  # multipart uploads for POST /documents
+    "pyjwt[crypto]>=2.15.0",  # Google ID token verification (jewel.auth.google)
 ]
 
 [dependency-groups]

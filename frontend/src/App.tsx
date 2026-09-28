@@ -1,10 +1,50 @@
+import { useEffect, useState } from 'react'
+import { Account } from './components/Account'
 import { AdviceNotice } from './components/AdviceNotice'
+import { DocumentLibrary } from './components/DocumentLibrary'
+import { getMe, logout, type Me } from './lib/api'
+
+/** Reads and removes `?signin_error=...` left by a failed Google callback. */
+function takeSignInError(): string | null {
+  const url = new URL(window.location.href)
+  const error = url.searchParams.get('signin_error')
+  if (error) {
+    url.searchParams.delete('signin_error')
+    window.history.replaceState(null, '', url.toString())
+  }
+  return error
+}
 
 /**
- * Placeholder page. Nothing here talks to the backend yet: sign-in is inert and there is
- * no fake signed-in user. Regions, in order: advice sentence, sign-in, Documents, Graph, Ask.
+ * Regions, in order: advice sentence, sign-in, Documents, Graph, Ask. Graph and Ask stay
+ * empty and disabled until a later pass.
  */
 function App() {
+  const [me, setMe] = useState<Me | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [signingOut, setSigningOut] = useState(false)
+  const [signInError] = useState(takeSignInError)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getMe()
+      .then(setMe)
+      .catch(() => setSessionError('Could not reach the jewel API.'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function onSignOut() {
+    setSigningOut(true)
+    try {
+      await logout()
+      setMe(null)
+    } catch {
+      setSessionError('Sign-out failed. Please try again.')
+    } finally {
+      setSigningOut(false)
+    }
+  }
+
   return (
     <main className="container">
       <header className="header">
@@ -15,18 +55,30 @@ function App() {
       <AdviceNotice />
 
       <section className="region" aria-labelledby="signin-title">
-        <h2 id="signin-title">Sign in</h2>
-        <button type="button" disabled title="Sign-in is not available yet">
-          Sign in with Google
-        </button>
-        <p className="hint">Sign-in is not connected yet.</p>
+        <h2 id="signin-title">{me ? 'Account' : 'Sign in'}</h2>
+        <Account
+          me={me}
+          loading={loading}
+          signInError={signInError}
+          onSignOut={() => void onSignOut()}
+          signingOut={signingOut}
+        />
+        {sessionError ? (
+          <p className="error" role="alert">
+            {sessionError}
+          </p>
+        ) : null}
       </section>
 
       <section className="region" aria-labelledby="documents-title">
         <h2 id="documents-title">Documents</h2>
-        <p className="empty">
-          Your library is empty. Upload a PDF, .txt or .md file to get started.
-        </p>
+        {me ? (
+          <DocumentLibrary key={me.email} />
+        ) : (
+          <p className="empty">
+            Sign in to upload a PDF, text, Markdown or Word file to your library.
+          </p>
+        )}
       </section>
 
       <section className="region" aria-labelledby="graph-title">
@@ -47,8 +99,8 @@ function App() {
           rows={3}
         />
         <p className="hint">
-          Asking needs a saved xAI API key and at least one ready document. You will see
-          each step of the search and the passages the answer quotes.
+          Asking is not available yet. You will see each step of the search and the
+          passages the answer quotes.
         </p>
       </section>
     </main>

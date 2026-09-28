@@ -15,6 +15,24 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Postgres for the auth and documents tests; conftest fails (never skips) in CI
+    # when JEWEL_TEST_DATABASE_URL is missing.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: jewel
+          POSTGRES_PASSWORD: jewel
+          POSTGRES_DB: jewel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jewel -d jewel_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      JEWEL_TEST_DATABASE_URL: postgresql://jewel:jewel@localhost:5432/jewel_test
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0  # no floating major tag is published for v10

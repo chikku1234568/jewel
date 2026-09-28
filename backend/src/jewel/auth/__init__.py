@@ -1,5 +1,5 @@
-"""Accounts: Google sign-in, server-side sessions, and the user's stored API key.
+"""Accounts: Google sign-in (authorization-code flow) and server-side sessions.
 
 Google is the only sign-in. No passwords, no second provider, no guest mode, and no fake
-logged-in user in the scaffold.
+logged-in user.
 """
