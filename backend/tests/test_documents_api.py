@@ -49,7 +49,10 @@ def test_upload_pdf_and_docx_are_parsed(client, db, settings, upload_dir) -> Non
 
     library = client.get("/documents").json()
     assert {d["filename"] for d in library} == {"Lease 2026.pdf", "letter.docx"}
-    assert all(set(d) == {"id", "filename", "uploaded_at", "status", "error"} for d in library)
+    assert all(
+        set(d) == {"id", "filename", "uploaded_at", "status", "error", "build_done", "build_total"}
+        for d in library
+    )
     assert len(stored_files(upload_dir)) == 2
 
 
