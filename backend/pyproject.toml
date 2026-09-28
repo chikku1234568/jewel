@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "neo4j>=5.20",  # graph store, declared only (not imported yet)
     "psycopg[binary]>=3.2",  # app data in Postgres, declared only (not imported yet)
+    "networkx>=3.3",  # graph for Personalized PageRank; the walk itself is local
 ]
 
 [dependency-groups]

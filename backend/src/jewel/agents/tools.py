@@ -1,12 +1,42 @@
-"""Agent tools (stub). These two, and only these.
+"""The only two tools. User id is bound by the caller, never by the model."""
 
-* ``search_graph(query: str, as_of: datetime | None)``: runs the retriever
-  (``jewel.retrieval.hippo.pipeline``) on the signed-in user's subgraph. Returns ranked
-  entities, ``RELATED_TO`` relationships (predicate, endpoints, quote, document id, times)
-  and cited document passages. Emits a highlight event with the returned ids.
-* ``read_document(document_id: str, span: tuple[int, int] | None)``: returns text from a
-  document. Refuses ids that ``search_graph`` did not return in this run and ids the user
-  does not own.
+from datetime import datetime
 
-User id and API key are injected by the application, never by the model.
-"""
+from jewel.kg.memory_store import MemoryGraphStore
+from jewel.llm.base import ChatModel, EmbeddingModel
+from jewel.retrieval.hippo.pipeline import RetrievalResult, retrieve
+
+
+class ToolError(PermissionError):
+    """The model asked for something this run is not allowed to open."""
+
+
+def search_graph(
+    store: MemoryGraphStore,
+    embedder: EmbeddingModel,
+    user_id: str,
+    query: str,
+    as_of: datetime,
+    chat: ChatModel | None = None,
+) -> RetrievalResult:
+    """Run the retriever on this user's graph as it stands now."""
+    return retrieve(store, embedder, user_id, query, as_of, chat)
+
+
+def read_document(
+    store: MemoryGraphStore,
+    user_id: str,
+    document_id: str,
+    allowed_document_ids: set[str],
+    span: tuple[int, int] | None = None,
+) -> str:
+    """Return text only for a document this run's search returned and the user owns."""
+    if document_id not in allowed_document_ids:
+        raise ToolError("that document was not returned by search")
+    text = store.document_text(user_id, document_id)
+    if text is None:
+        raise ToolError("that document is not in this user's graph")
+    if span is None:
+        return text
+    start, end = span
+    return text[start:end]
