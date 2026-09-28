@@ -1,8 +1,24 @@
-"""Agent state (stub).
+"""State for one question. The model sees the question and the tool observations only."""
 
-Planned fields: ``question``, ``user_id`` (bound by the application, not visible to the
-model as a parameter), ``as_of`` (optional question time, default now), ``tool_trace``
-(ordered tool calls with arguments and result summaries), ``tool_calls_used`` (cap 4),
-``returned_document_ids`` (what ``read_document`` may open), ``citations`` (document id and
-quote pairs from tool results), and ``answer``.
-"""
+from dataclasses import dataclass, field
+from datetime import datetime
+
+
+@dataclass
+class ToolTraceEntry:
+    name: str
+    arguments: dict
+    summary: str
+
+
+@dataclass
+class AgentResult:
+    question: str
+    user_id: str
+    as_of: datetime
+    tool_trace: list[ToolTraceEntry] = field(default_factory=list)
+    tool_calls_used: int = 0
+    returned_document_ids: list[str] = field(default_factory=list)
+    answer: str = ""
+    highlight_entity_ids: list[str] = field(default_factory=list)
+    highlight_relationship_ids: list[str] = field(default_factory=list)
