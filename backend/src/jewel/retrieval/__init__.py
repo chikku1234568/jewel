@@ -1,1 +1,1 @@
-"""Retrieval: HippoRAG-2-inspired temporal PPR (``hippo``) and a naive RAG baseline."""
+"""Retrieval: the graph retriever behind ``search_graph`` and the text-search comparison."""

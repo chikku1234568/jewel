@@ -1,16 +1,8 @@
-"""Shared LangGraph state (stub). Proposed, for review.
+"""Agent state (stub).
 
-Planned fields (see docs/architecture.md section 4.1):
-
-* ``run_id``, ``patient_id``
-* ``episode_ids``: episodes to process (already persisted as ``:Episode`` nodes)
-* ``parsed``: per-episode parse output (text, detected kind: order / note / lab)
-* ``now``: the run's reference time used for "valid now" queries
-* ``order_refs`` / ``lab_refs``: ids written by the EHR Order / Laboratory Monitor agents
-* ``rule_verdicts``: output of ``jewel.rules`` (deterministic)
-* ``closed_edges``: PRESCRIBED_DOSE relationships whose ``invalid_at`` was set
-* ``status_sentence``: LLM-written one-liner (not a decision)
-* ``question`` / ``graph_answer`` / ``baseline_answer``: filled by the ``answer`` node
-* ``progress``: list of (step, status, timestamp) events
-* ``write_log``: every attempted graph write with (agent, op, kind, allowed)
+Planned fields: ``question``, ``user_id`` (bound by the application, not visible to the
+model as a parameter), ``as_of`` (optional question time, default now), ``tool_trace``
+(ordered tool calls with arguments and result summaries), ``tool_calls_used`` (cap 4),
+``returned_document_ids`` (what ``read_document`` may open), ``citations`` (document id and
+quote pairs from tool results), and ``answer``.
 """

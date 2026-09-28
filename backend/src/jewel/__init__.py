@@ -1,6 +1,6 @@
-"""jewel: pharmacotherapy regimen lab alert showcase.
+"""jewel: a personal live knowledge graph over a user's own documents.
 
-Synthetic data only. Not a medical device and not clinical advice.
+Answers quote the user's documents and are not medical, legal, or financial advice.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"

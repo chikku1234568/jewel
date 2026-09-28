@@ -1,5 +1,5 @@
-"""Query entity extraction and linking to KG nodes (stub).
+"""Step 1: link the question to the user's entities (stub).
 
-TODO(step-N): LLM NER over the question, then embedding nearest-neighbour search
-(Neo4j vector index) against entity nodes to get candidate seed nodes.
+TODO(later pass): embed the question and query the ``:Entity`` vector index, filtered to
+the session ``user_id``.
 """

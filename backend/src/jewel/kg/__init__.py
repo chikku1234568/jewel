@@ -1,1 +1,1 @@
-"""Temporal knowledge graph: schema, storage, time filters, and write permissions."""
+"""Per-user knowledge graph in Neo4j: schema, store, validity predicate, extraction."""

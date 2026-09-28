@@ -4,8 +4,8 @@ from typing import Protocol
 
 
 class DocumentParser(Protocol):
-    """Extract plain text from an uploaded document before it becomes an episode."""
+    """Extract plain text from an uploaded PDF, ``.txt`` or ``.md`` file."""
 
     def extract_text(self, data: bytes, filename: str) -> str:
-        """Return the document text. Implementations must not call an LLM."""
+        """Return the document text. Implementations must not call a model."""
         ...

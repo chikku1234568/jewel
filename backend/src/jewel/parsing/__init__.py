@@ -1,1 +1,1 @@
-"""Document parsing behind a small interface so the library choice stays swappable."""
+"""Parsing uploads to text: PDF, plain text (``.txt``) and Markdown (``.md``)."""

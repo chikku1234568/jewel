@@ -1,15 +1,14 @@
-"""Temporal semantics (stub).
+"""Validity predicate used by retrieval (stub).
 
-"Valid now" means the relationship has started and has not been closed:
+A relationship is valid at time ``t`` when it has started (or is undated) and has not
+been closed::
 
-    valid_at <= t  AND  (invalid_at IS NULL OR invalid_at > t)
+    (r.valid_at IS NULL OR r.valid_at <= $t)
+    AND (r.invalid_at IS NULL OR r.invalid_at > $t)
 
-Planned Cypher fragment (single source of truth, reused by the graph answer, the
-graph view, and retrieval):
+``valid_at`` is the document date when there is one, otherwise null (undated statements
+stay valid). ``invalid_at`` is null unless the user deletes or a later write explicitly
+closes the relationship. There is no rule engine that closes edges. ``t`` defaults to now.
 
-    MATCH (a)-[r]->(b)
-    WHERE r.valid_at <= $t AND (r.invalid_at IS NULL OR r.invalid_at > $t)
-
-TODO(step-N): expose the predicate as a Cypher snippet and a Python function so both
-the database path and any in-Python PPR path agree on what is active at ``t``.
+TODO(later pass): expose the predicate once, as a Cypher fragment and a Python function.
 """

@@ -1,5 +1,4 @@
 """PDF parser (stub).
 
-TODO(step-N): implement ``DocumentParser`` with pypdf or pdfplumber (docling as an
-upgrade path for complex layouts). Choice is an open question.
+TODO(later pass): implement ``DocumentParser`` with pypdf first; enforce the 50-page cap.
 """

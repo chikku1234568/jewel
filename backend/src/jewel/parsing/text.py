@@ -1,4 +1,5 @@
-"""Plain-text passthrough parser (stub).
+"""Plain-text and Markdown parser (stub).
 
-TODO(step-N): normalise encoding and whitespace for pasted text / .txt uploads.
+TODO(later pass): decode ``.txt`` and ``.md`` as UTF-8 (with a clear error otherwise)
+and keep the text as-is so quotes and offsets match the stored file.
 """

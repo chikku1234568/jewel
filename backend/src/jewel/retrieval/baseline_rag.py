@@ -1,6 +1,7 @@
-"""Naive RAG baseline over raw episode text (stub).
+"""Text-search comparison, ``compare_text`` (stub).
 
-Purpose: the side-by-side proof. Embed episode chunks, take top-k by cosine similarity
-to the question, and answer from them. Expected to say the order is fine, because the
-lab text never names the drug.
+Not a tool and not an agent. Opened on demand from an existing answer: the same question,
+the same model, the same embedding model; top-k chunks of the user's document text by
+cosine similarity (``user_id``-scoped), then one answer. Ignores relationships and time.
+The panel shows that answer and the chunks it used.
 """

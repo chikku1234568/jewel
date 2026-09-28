@@ -1,20 +1,19 @@
-"""Neo4j graph store (stub). Storage decision: Neo4j 5.x Community (ADR 0002, Accepted).
+"""Neo4j graph store (stub). Neo4j 5.x Community, official ``neo4j`` driver.
 
-Modelling (see docs/architecture.md section 5):
+Rules for every query (a missing ``user_id`` predicate is a defect, not a default):
 
-* Clinical nodes (``:Patient``, ``:MedicationOrder``, ``:LabObservation``,
-  ``:ClinicalProtocolRule``) and relationships (``:PRESCRIBED_DOSE``, ...) are native
-  Neo4j labels / relationship types.
-* Temporal properties: ``valid_at`` / ``invalid_at`` on relationships (Neo4j
-  ``DATETIME``), ``collected_at`` on ``:LabObservation``.
-* Raw episode text lives on ``:Episode`` nodes (provenance); every written node or
-  relationship records the ``episode_id`` it came from.
-* Embeddings are ``LIST<FLOAT>`` properties on ``:Entity`` / ``:Episode`` nodes indexed
-  with Neo4j's native vector index (Community indexes LIST properties; native VECTOR
-  properties need Enterprise block format).
+* Every node and relationship is written with ``user_id``; every read matches on the
+  ``user_id`` taken from the session.
+* Entity identity within one user: case-fold ``name`` and reuse on exact match. Never
+  merge across users.
+* Embeddings are ``LIST<FLOAT>`` properties with a Neo4j vector index (dimension from the
+  embedding model settings). The Enterprise ``VECTOR`` property type is not required.
+* Delete document: remove its ``MENTIONS``, the ``RELATED_TO`` rows whose ``document_id``
+  is that document, then entities with no remaining ``MENTIONS`` for that user.
 
-TODO(step-N): ``Neo4jGraphStore`` (official ``neo4j`` Python driver) with
-``add_node``, ``open_edge``, ``close_edge`` (set ``invalid_at``), ``subgraph_valid_at(t)``,
-and ``vector_search(index, embedding, k)``. All writes go through
-``jewel.kg.permissions.GraphWriter`` first; agents never get a raw driver/session.
+The driver is declared in ``pyproject.toml`` but not imported yet.
+
+TODO(later pass): ``Neo4jGraphStore`` with user-scoped ``write_document``,
+``upsert_entity``, ``write_mention``, ``write_relationship``, ``subgraph``,
+``delete_entity``, ``delete_relationship``, ``delete_document``, ``vector_search``.
 """

@@ -1,1 +1,1 @@
-"""Role-restricted agents. Each agent only receives a writer scoped to its role."""
+"""The single question-answering agent (LangGraph runtime)."""

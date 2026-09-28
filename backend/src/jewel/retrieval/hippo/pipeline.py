@@ -1,5 +1,6 @@
-"""End-to-end temporal retrieval orchestration (stub).
+"""Retriever orchestration behind ``search_graph`` (stub).
 
-TODO(step-N): ``retrieve(question, t_query) -> RetrievalResult`` combining linking,
-recognition, and PPR, and attaching raw-text provenance for each returned fact.
+TODO(later pass): ``retrieve(user_id, query, as_of) -> RetrievalResult`` chaining
+linking, validity filter, triple ranking, recognition, and PageRank, and attaching the
+quote and a raw-text passage for every returned relationship.
 """

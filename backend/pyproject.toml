@@ -1,25 +1,21 @@
 [project]
 name = "jewel"
-version = "0.0.1"
-description = "Pharmacotherapy regimen lab alert: a temporal-knowledge-graph showcase (synthetic data, not for clinical use)."
+version = "0.0.2"
+description = "jewel: a personal live knowledge graph over your own documents."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Srikar Sribhashyam" }]
-license = { text = "Proprietary (private showcase; licence TBD)" }
-# Step 1: what is needed to import the stubs and serve /health, plus the clients for the
-# two accepted decisions (neo4j driver, redis-py). Stubs do not import them yet.
-# Planned runtime dependencies (added in the step that first needs them, see docs/architecture.md):
-#   langgraph            - agent orchestration (architecture section 4)
-#   networkx or python-igraph (or Neo4j GDS, no Python dep) - query-time PPR (ADR 0004)
-#   pypdf / pdfplumber / docling - document parsing behind parsing.base.DocumentParser
-#   an LLM + embedding SDK behind llm.base (provider not chosen yet)
+license = { text = "Proprietary (private repository; licence TBD)" }
+# Only libraries the scaffold imports, plus the clients for the two decided stores.
+# The Neo4j driver and the Postgres client are declared because the stores are decided
+# (ADR 0011, ADR 0009); no stub imports them yet.
 dependencies = [
     "fastapi>=0.115",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "uvicorn[standard]>=0.30",
-    "neo4j>=5.20",  # ADR 0002 (Accepted): Neo4j 5.x Community
-    "redis>=5.0",  # ADR 0003 (Accepted): Redis
+    "neo4j>=5.20",  # graph store, declared only (not imported yet)
+    "psycopg[binary]>=3.2",  # app data in Postgres, declared only (not imported yet)
 ]
 
 [dependency-groups]

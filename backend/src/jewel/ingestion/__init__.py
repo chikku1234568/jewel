@@ -1,5 +1,6 @@
-"""Ingestion: a paste or an uploaded document becomes exactly one episode.
+"""Fixed ingestion pipeline for one document of one user. Not an agent, no role split.
 
-Spec: "Each source is one episode: who wrote it, when, and the raw text kept beside
-the graph so a hop can be checked."
+Steps, same order every time: parse -> chunk -> extract -> embed -> write.
+Runs only when the user has a saved key; otherwise the document waits
+(``waiting_for_key``). Building the graph spends the user's key.
 """

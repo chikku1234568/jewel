@@ -1,6 +1,5 @@
-"""Recognition-memory triple filter (stub).
+"""Step 4: recognition-memory filter (stub).
 
-TODO(step-N): retrieve top-k candidate triples by embedding similarity (restricted to
-edges valid at ``t_query``), then ask the LLM to keep only the relevant ones
-(HippoRAG 2, section 3.4).
+TODO(later pass): one model call with the user's key that keeps only the candidate
+triples relevant to the question. It filters candidates; it does not answer.
 """

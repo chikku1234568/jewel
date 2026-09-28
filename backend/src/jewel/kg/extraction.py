@@ -1,7 +1,12 @@
-"""LLM triple extraction (stub).
+"""Entity and triple extraction with the user's key (stub).
 
-TODO(step-N): prompt an LLM to extract (e1, r, e2) triples from an episode, then map
-them onto the typed clinical schema where possible (open triples are kept as
-retrieval-support ``RELATED_TO`` edges). Synonym/entity linking by embedding
-similarity, HippoRAG-style.
+The model returns JSON validated into this schema (data, never code or Cypher):
+
+* Entity: ``name`` (surface form), ``type`` in ``person | organization | place |
+  concept | other``.
+* Triple: ``subject`` and ``object`` (entity names), ``predicate`` (short phrase, stored as
+  a property), ``quote`` (span copied from the document text), optional character offsets.
+
+TODO(later pass): prompt, Pydantic validation, and dropping triples whose quote does not
+occur in the extracted text.
 """
