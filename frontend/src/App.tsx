@@ -1,43 +1,57 @@
-import { NotForClinicalUseBanner } from './components/NotForClinicalUseBanner'
+import { AdviceNotice } from './components/AdviceNotice'
 
 /**
- * Placeholder shell. Step 1 is structure + architecture only.
- *
- * Planned panels (see docs/architecture.md):
- *   1. Ingest: paste text / upload PDF -> episodes
- *   2. Progress: the five visible steps
- *   3. Chat: graph answer vs. naive-RAG baseline, side by side
- *   4. Graph view: temporal KG with the closed PRESCRIBED_DOSE edge
+ * Placeholder page. Nothing here talks to the backend yet: sign-in is inert and there is
+ * no fake signed-in user. Regions, in order: advice sentence, sign-in, Documents, Graph, Ask.
  */
-const PLANNED_STEPS = [
-  'Parse orders',
-  'Ingest labs',
-  'Evaluate the rule',
-  'Invalidate the dose',
-  'State what is still active',
-] as const
-
 function App() {
   return (
-    <>
-      <NotForClinicalUseBanner />
-      <main className="container">
+    <main className="container">
+      <header className="header">
         <h1>jewel</h1>
-        <p className="subtitle">Pharmacotherapy regimen lab alert (showcase)</p>
-        <p>
-          Status: <em>step 1, repository structure and architecture proposal</em>.
-          No functionality yet.
+        <p className="subtitle">Your documents, as a knowledge graph you can explore and ask.</p>
+      </header>
+
+      <AdviceNotice />
+
+      <section className="region" aria-labelledby="signin-title">
+        <h2 id="signin-title">Sign in</h2>
+        <button type="button" disabled title="Sign-in is not available yet">
+          Sign in with Google
+        </button>
+        <p className="hint">Sign-in is not connected yet.</p>
+      </section>
+
+      <section className="region" aria-labelledby="documents-title">
+        <h2 id="documents-title">Documents</h2>
+        <p className="empty">
+          Your library is empty. Upload a PDF, .txt or .md file to get started.
         </p>
-        <section>
-          <h2>Planned progress steps</h2>
-          <ol>
-            {PLANNED_STEPS.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-        </section>
-      </main>
-    </>
+      </section>
+
+      <section className="region" aria-labelledby="graph-title">
+        <h2 id="graph-title">Graph</h2>
+        <p className="empty">
+          Your graph appears here after a file is built: the people, places and ideas in
+          your documents, linked by the sentences that connect them. Click a node to read the
+          sentence it came from.
+        </p>
+      </section>
+
+      <section className="region" aria-labelledby="ask-title">
+        <h2 id="ask-title">Ask</h2>
+        <textarea
+          aria-label="Question"
+          placeholder="Ask a question about your documents"
+          disabled
+          rows={3}
+        />
+        <p className="hint">
+          Asking needs a saved xAI API key and at least one ready document. You will see
+          each step of the search and the passages the answer quotes.
+        </p>
+      </section>
+    </main>
   )
 }
 

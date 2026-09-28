@@ -1,11 +1,14 @@
 /**
  * Typed API client for the jewel backend (placeholder).
  *
- * TODO(step-N): add typed calls for:
- *   - POST /episodes        (paste text or upload a document)
- *   - POST /runs            (run the three agents in order, stream 5 progress steps)
- *   - POST /ask             (graph answer + naive-RAG baseline side by side)
- *   - GET  /graph?as_of=... (time-filtered subgraph for the graph view)
+ * Only GET /health exists on the server today. Planned calls (all session-cookie based):
+ *   - GET  /auth/google, POST /auth/logout, GET /me
+ *   - PUT / DELETE /me/api-key, POST /me/api-key/check
+ *   - POST /documents, GET /documents, GET /documents/{id},
+ *     POST /documents/{id}/build, DELETE /documents/{id}
+ *   - GET /graph?document_id=..., DELETE /graph/entities/{id},
+ *     DELETE /graph/relationships/{id}
+ *   - POST /ask, GET /ask/{run_id}/events (Server-Sent Events), POST /ask/{run_id}/compare
  */
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
