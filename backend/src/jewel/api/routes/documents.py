@@ -1,10 +1,11 @@
 """Document routes (mounted). Every route requires a session; the owner is always the
 session user, never a client-supplied field.
 
-* ``POST /documents``: multipart upload of one ``.pdf``, ``.txt``, ``.md`` or ``.docx``
-  file. Disallowed types (415), files over 20 MB (413) and PDFs over 50 pages (422) are
-  rejected before anything is stored. Otherwise the file is stored, parsed, and the row
-  is returned with status ``parsed`` or ``failed`` (with ``error``).
+* ``POST /documents``: multipart upload of one ``.pdf``, ``.docx``, ``.pptx``, ``.xlsx``,
+  ``.html``, ``.htm``, ``.txt`` or ``.md`` file. Disallowed types (415), files over 20 MB
+  (413) and PDFs over 50 pages (422) are rejected before anything is stored. Otherwise
+  the file is stored, converted to Markdown text, and the row is returned with status
+  ``parsed`` or ``failed`` (with ``error``).
 * ``GET /documents``: the caller's library (id, filename, uploaded_at, status, error).
 * ``GET /documents/{id}``: the row with extracted text for the owner; 404 otherwise.
 * ``DELETE /documents/{id}``: delete the row and the file for the owner; 404 otherwise.

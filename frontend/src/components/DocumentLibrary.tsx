@@ -180,7 +180,8 @@ export function DocumentLibrary({
           </button>
         </form>
         <p className="hint small">
-          PDF, text, Markdown or Word (.docx), up to 20 MB. PDFs over 50 pages are rejected.
+          PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), HTML, text or Markdown, up to 20
+          MB. PDFs over 50 pages are rejected. Scanned PDFs without a text layer cannot be read.
         </p>
       </section>
 
@@ -205,7 +206,7 @@ export function DocumentLibrary({
           <p className="hint">Loading your library…</p>
         ) : documents.length === 0 ? (
           <p className="empty">
-            Your library is empty. Upload a PDF, text, Markdown or Word file to get started.
+            Your library is empty. Upload a PDF, Office, HTML, text or Markdown file to get started.
           </p>
         ) : (
           <table className="library">

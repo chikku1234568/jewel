@@ -2,7 +2,8 @@
 
 1. Reject a disallowed type or an over-cap file (20 MB, 50 PDF pages) before writing bytes.
 2. Write bytes under ``JEWEL_UPLOAD_DIR`` at an opaque path and insert the row (``stored``).
-3. Set ``parsing`` and parse to text.
+3. Set ``parsing`` and convert to text: Markdown via MarkItDown, or UTF-8 for ``.txt`` and
+   ``.md``. The PDF page cap already ran with pypdf in step 1, before any conversion.
 4. Empty or whitespace text -> ``failed`` with "No text could be extracted".
 5. Otherwise save ``extracted_text`` and set ``parsed``.
 
@@ -30,7 +31,9 @@ from jewel.parsing import ParseError, parser_for, pdf_page_count
 logger = logging.getLogger(__name__)
 
 NO_TEXT_ERROR = "No text could be extracted"
-UNSUPPORTED_TYPE_ERROR = "Unsupported file type. Upload a PDF, .txt, .md or .docx file."
+UNSUPPORTED_TYPE_ERROR = (
+    "Unsupported file type. Upload a PDF, .docx, .pptx, .xlsx, .html, .htm, .txt or .md file."
+)
 TOO_LARGE_ERROR = "File is larger than 20 MB."
 
 

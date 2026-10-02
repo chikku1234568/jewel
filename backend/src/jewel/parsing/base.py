@@ -8,7 +8,7 @@ class ParseError(Exception):
 
 
 class DocumentParser(Protocol):
-    """Extract plain text from an uploaded PDF, ``.txt``, ``.md`` or ``.docx`` file."""
+    """Extract text (Markdown for converted formats) from one accepted upload."""
 
     def extract_text(self, data: bytes, filename: str) -> str:
         """Return the document text (may be empty). Raise ``ParseError`` on bad input.

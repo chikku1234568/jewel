@@ -15,18 +15,20 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "neo4j>=5.20",  # graph store, declared only (not imported yet)
     "psycopg[binary]>=3.2",  # Postgres: users, sessions, documents (jewel.db)
-    "pypdf>=6.19.0",  # PDF text extraction and page count (jewel.parsing.pdf)
-    "python-docx>=1.2.0",  # .docx text extraction (jewel.parsing.docx)
+    "pypdf>=6.19.0",  # PDF page count and password check before conversion (jewel.parsing.pdf)
     "python-multipart>=0.0.32",  # multipart uploads for POST /documents
     "pyjwt[crypto]>=2.15.0",  # Google ID token verification (jewel.auth.google)
     "networkx>=3.3",  # graph for Personalized PageRank; the walk itself is local
     "fastembed>=0.7",  # local BAAI/bge-base-en-v1.5 embeddings
+    # Upload -> Markdown for .pdf/.docx/.pptx/.xlsx/.html (jewel.parsing.markdown)
+    "markitdown[docx,pdf,pptx,xlsx]>=0.1.8",
 ]
 
 [dependency-groups]
 dev = [
     "httpx2>=2.0",
     "pytest>=8.0",
+    "python-docx>=1.2.0",  # builds .docx test fixtures (tests/fixtures.py)
     "ruff>=0.6",
 ]
 

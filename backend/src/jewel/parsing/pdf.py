@@ -1,4 +1,8 @@
-"""PDF parsing with pypdf (text layer only, no OCR)."""
+"""PDF checks with pypdf: page count for the upload cap, and readability.
+
+Text extraction itself is done by MarkItDown (``jewel.parsing.markdown``). pypdf stays
+because the 50-page cap must be checked before anything is stored or converted.
+"""
 
 import io
 
@@ -30,11 +34,6 @@ def pdf_page_count(data: bytes) -> int:
         raise ParseError("Could not read this PDF") from exc
 
 
-class PdfParser:
-    def extract_text(self, data: bytes, filename: str) -> str:
-        reader = _reader(data)
-        try:
-            pages = [page.extract_text() or "" for page in reader.pages]
-        except Exception as exc:  # malformed content streams
-            raise ParseError("Could not extract text from this PDF") from exc
-        return "\n\n".join(pages)
+def check_pdf_readable(data: bytes) -> None:
+    """Raise ``ParseError`` for a PDF pypdf cannot open or that needs a password."""
+    pdf_page_count(data)

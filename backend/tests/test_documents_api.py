@@ -3,8 +3,9 @@
 from pathlib import Path
 
 from jewel.documents.models import DOCX_MEDIA_TYPE, MAX_UPLOAD_BYTES
+from jewel.parsing.markdown import MarkItDownParser
 from tests.conftest import make_client, sign_in
-from tests.fixtures import make_docx, make_pdf
+from tests.fixtures import make_docx, make_pdf, make_pptx
 
 
 def upload(client, filename: str, data: bytes, content_type: str = "application/octet-stream"):
@@ -98,10 +99,32 @@ def test_corrupt_pdf_fails_with_parse_error(client, db, settings, upload_dir) ->
     assert len(stored_files(upload_dir)) == 1
 
 
-def test_disallowed_type_is_rejected_and_not_stored(client, db, settings, upload_dir) -> None:
+def test_pptx_and_html_are_parsed_to_markdown(client, db, settings) -> None:
+    sign_in(client, db, settings, "sub-a", "alice@example.com")
+    slides = upload(client, "deck.pptx", make_pptx(["Sam holds the warehouse key"]))
+    page = upload(client, "page.html", b"<html><body><h2>Keys</h2><p>Sam.</p></body></html>")
+    for response in (slides, page):
+        assert response.status_code == 201, response.text
+        assert response.json()["status"] == "parsed"
+    detail = client.get(f"/documents/{page.json()['id']}").json()
+    assert detail["extracted_text"].startswith("## Keys")  # stored as Markdown
+
+
+def test_corrupt_pptx_fails_but_row_and_file_remain(client, db, settings, upload_dir) -> None:
     sign_in(client, db, settings, "sub-a", "alice@example.com")
     response = upload(client, "slides.pptx", b"PK\x03\x04")
-    assert response.status_code == 415
+    assert response.status_code == 201
+    assert response.json()["status"] == "failed"
+    assert response.json()["error"] == "Could not read this .pptx file"
+    assert count_rows(db) == 1
+    assert len(stored_files(upload_dir)) == 1
+
+
+def test_disallowed_type_is_rejected_and_not_stored(client, db, settings, upload_dir) -> None:
+    sign_in(client, db, settings, "sub-a", "alice@example.com")
+    for name in ("archive.zip", "photo.png", "old.doc", "talk.mp3"):
+        response = upload(client, name, b"PK\x03\x04")
+        assert response.status_code == 415
     assert count_rows(db) == 0
     assert stored_files(upload_dir) == []
 
@@ -121,8 +144,16 @@ def test_exactly_20_mb_is_accepted(client, db, settings) -> None:
     assert response.json()["status"] == "parsed"
 
 
-def test_pdf_over_50_pages_is_rejected_and_not_stored(client, db, settings, upload_dir) -> None:
+def test_pdf_over_50_pages_is_rejected_and_not_stored(
+    client, db, settings, upload_dir, monkeypatch
+) -> None:
     sign_in(client, db, settings, "sub-a", "alice@example.com")
+
+    # The pypdf page count must reject the file before MarkItDown is ever called.
+    def no_conversion(*_args, **_kwargs):
+        raise AssertionError("MarkItDown ran on an over-cap PDF")
+
+    monkeypatch.setattr(MarkItDownParser, "extract_text", no_conversion)
     response = upload(client, "long.pdf", make_pdf([f"page {i}" for i in range(51)]))
     assert response.status_code == 422
     assert "50" in response.json()["detail"]

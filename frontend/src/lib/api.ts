@@ -45,7 +45,7 @@ export interface DocumentDetail extends DocumentSummary {
 }
 
 /** File types the API accepts, for the file picker. */
-export const ACCEPTED_FILE_TYPES = '.pdf,.txt,.md,.docx'
+export const ACCEPTED_FILE_TYPES = '.pdf,.docx,.pptx,.xlsx,.html,.htm,.txt,.md'
 
 export class ApiError extends Error {
   readonly status: number

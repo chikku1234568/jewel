@@ -29,7 +29,7 @@ EXPECTED_MODULES = [
     "jewel.documents.storage",
     "jewel.documents.repository",
     "jewel.documents.service",
-    "jewel.parsing.docx",
+    "jewel.parsing.markdown",
     "jewel.ingestion.pipeline",
     "jewel.ingestion.chunking",
     "jewel.parsing.base",
