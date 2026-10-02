@@ -22,6 +22,9 @@ dependencies = [
     "fastembed>=0.7",  # local BAAI/bge-base-en-v1.5 embeddings
     # Upload -> Markdown for .pdf/.docx/.pptx/.xlsx/.html (jewel.parsing.markdown)
     "markitdown[docx,pdf,pptx,xlsx]>=0.1.8",
+    # The answer agent: create_agent hosts search_graph/read_document (jewel.agents.graph)
+    "langchain>=1.4.3",
+    "langgraph>=1.2.12",
 ]
 
 [dependency-groups]

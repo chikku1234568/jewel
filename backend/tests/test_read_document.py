@@ -4,13 +4,14 @@ from datetime import datetime
 
 import pytest
 
-from jewel.agents.graph import Decision, ToolRequest, run_agent
+from jewel.agents.graph import run_agent
 from jewel.agents.state import KeptTriple
 from jewel.agents.tools import MAX_CHUNKS_PER_READ, ToolError, read_document
 from jewel.ingestion.chunking import build_chunks
 from jewel.ingestion.live import build_parsed_text
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.hashing import HashingEmbedder
+from tests.fake_chat import AIMessage, ScriptedChat, Turn, call
 from tests.test_chunk_ordinals import ShuffledApiChat
 
 USER = "user-a"
@@ -53,33 +54,63 @@ def _store_with(document_id: str, user: str = USER, store: MemoryGraphStore | No
 
 def test_agent_reads_full_chunk_text_of_a_document_its_search_returned() -> None:
     store, stored = _store_with("inventory")
-    seen: list[list[str]] = []
 
-    def decider(question: str, observations: list[str], force_answer: bool) -> Decision:
-        seen.append(observations)
-        if not observations:
-            return Decision(tool=ToolRequest("search_graph", {"query": "Where is item 42?"}))
-        if len(observations) == 1:
-            return Decision(tool=ToolRequest("read_document", {"document_id": "inventory"}))
-        return Decision(answer="done")
+    def script(turn: Turn) -> AIMessage:
+        if turn.tool_results == 0:
+            return call("search_graph", query="Where is item 42?")
+        if turn.tool_results == 1:
+            return call("read_document", document_id="inventory")
+        return AIMessage("done")
 
+    model = ScriptedChat(script=script)
     result = run_agent(
         question="Where is item 42 stored?",
         user_id=USER,
         store=store,
         embedder=HashingEmbedder(),
-        decider=decider,
+        model=model,
         as_of=APRIL,
         stored_chunks=lambda document_id: stored if document_id == "inventory" else {},
     )
     assert result.kept_triples
     assert all(triple.chunk_ordinal is not None for triple in result.kept_triples)
-    opened = seen[-1][1]
+    opened = model.turns[-1].observations[1]
     # The stored chunk rows are what the model sees, whole: no 240-character slice.
     chosen = [stored[t.chunk_ordinal] for t in result.kept_triples]
     assert any(len(chunk) > 240 and chunk in opened for chunk in chosen)
     assert 1 <= opened.count("passage ") <= MAX_CHUNKS_PER_READ
     assert result.tool_trace[1].summary.startswith("opened ")
+
+
+def test_agent_cannot_open_a_document_its_search_did_not_return() -> None:
+    store, stored = _store_with("inventory")
+    _store_with("theirs", user=OTHER, store=store)
+
+    def script(turn: Turn) -> AIMessage:
+        if turn.tool_results == 0:
+            return call("read_document", document_id="inventory")  # before any search
+        if turn.tool_results == 1:
+            return call("search_graph", query="Where is item 42?")
+        if turn.tool_results == 2:
+            return call("read_document", document_id="theirs")
+        return AIMessage("done")
+
+    model = ScriptedChat(script=script)
+    result = run_agent(
+        question="Where is item 42 stored?",
+        user_id=USER,
+        store=store,
+        embedder=HashingEmbedder(),
+        model=model,
+        as_of=APRIL,
+        stored_chunks=lambda _id: stored,
+    )
+    refused = "that document was not returned by search"
+    observations = model.turns[-1].observations
+    assert observations[0] == refused
+    assert observations[2] == refused
+    assert result.returned_document_ids == ["inventory"]
+    assert not any(chunk in "\n".join(observations) for chunk in stored.values())
 
 
 def test_read_rejects_any_document_the_search_did_not_return() -> None:

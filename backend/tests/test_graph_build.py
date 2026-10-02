@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from jewel.agents.graph import Decision, ToolRequest, run_agent
+from jewel.agents.graph import run_agent
 from jewel.agents.tools import ToolError, read_document
 from jewel.ingestion.chunking import chunk_text
 from jewel.ingestion.live import build_parsed_text
@@ -18,6 +18,7 @@ from jewel.llm.kimi import kimi_is_configured
 from jewel.retrieval.baseline_rag import rank_chunks
 from jewel.retrieval.hippo.pipeline import retrieve
 from jewel.retrieval.hippo.recognition import filter_triples
+from tests.fake_chat import AIMessage, ScriptedChat, Turn, call, calls
 
 JANUARY = datetime(2026, 1, 15)
 FEBRUARY = datetime(2026, 2, 1)
@@ -227,28 +228,31 @@ def test_agent_searches_then_reads_only_a_returned_document() -> None:
     store = MemoryGraphStore()
     _build(store, USER, "jan", JAN_TEXT, JANUARY, _january())
     _build(store, USER, "mar", MAR_TEXT, MARCH, _march())
-    calls: list[bool] = []
 
-    def decider(question: str, observations: list[str], force_answer: bool) -> Decision:
-        calls.append(force_answer)
-        assert USER not in question
-        if not observations:
-            return Decision(tool=ToolRequest("search_graph", {"query": "4412"}))
-        if len(observations) == 1:
-            return Decision(tool=ToolRequest("read_document", {"document_id": "mar"}))
-        return Decision(answer="The March note says the code was rotated.")
+    def script(turn: Turn) -> AIMessage:
+        if turn.tool_results == 0:
+            return call("search_graph", query="4412")
+        if turn.tool_results == 1:
+            return call("read_document", document_id="mar")
+        return AIMessage("The March note says the code was rotated.")
 
+    model = ScriptedChat(script=script)
     result = run_agent(
         question="Is the alarm code still 4412?",
         user_id=USER,
         store=store,
         embedder=HashingEmbedder(),
-        decider=decider,
+        model=model,
         as_of=APRIL,
     )
     assert result.tool_calls_used == 2
+    assert [entry.name for entry in result.tool_trace] == ["search_graph", "read_document"]
     assert "mar" in result.returned_document_ids
     assert result.highlight_entity_ids
+    assert result.answer == "The March note says the code was rotated."
+    # The model is offered exactly the two tools, and never sees the user id.
+    assert model.turns[0].tool_names == ["search_graph", "read_document"]
+    assert all(USER not in turn.text for turn in model.turns)
     with pytest.raises(ToolError):
         read_document(store, USER, "missing", set())
 
@@ -257,21 +261,49 @@ def test_agent_stops_at_four_tool_calls_and_then_answers() -> None:
     store = MemoryGraphStore()
     _build(store, USER, "jan", JAN_TEXT, JANUARY, _january())
 
-    def decider(question: str, observations: list[str], force_answer: bool) -> Decision:
-        if force_answer:
-            return Decision(answer="January still states 4412.")
-        return Decision(tool=ToolRequest("search_graph", {"query": question}))
+    def script(turn: Turn) -> AIMessage:
+        if not turn.tools:
+            return AIMessage("January still states 4412.")
+        return call("search_graph", query="4412")
+
+    model = ScriptedChat(script=script)
+    result = run_agent(
+        question="4412",
+        user_id=USER,
+        store=store,
+        embedder=HashingEmbedder(),
+        model=model,
+        as_of=APRIL,
+    )
+    assert result.tool_calls_used == 4
+    assert result.answer == "January still states 4412."
+    # Four turns with tools, then one with none, told to answer.
+    assert [bool(turn.tools) for turn in model.turns] == [True] * 4 + [False]
+    assert "Answer now" in str(model.turns[-1].messages[0].content)
+
+
+def test_agent_runs_one_tool_per_turn_and_never_more_than_four() -> None:
+    store = MemoryGraphStore()
+    _build(store, USER, "jan", JAN_TEXT, JANUARY, _january())
+
+    def script(turn: Turn) -> AIMessage:
+        # A greedy model: three searches per turn, and a tool call even when told to answer.
+        greedy = calls(*[("search_graph", {"query": f"q{n}"}) for n in range(3)])
+        if not turn.tools:
+            return AIMessage("answer", tool_calls=greedy.tool_calls)
+        return greedy
 
     result = run_agent(
         question="4412",
         user_id=USER,
         store=store,
         embedder=HashingEmbedder(),
-        decider=decider,
+        model=ScriptedChat(script=script),
         as_of=APRIL,
     )
     assert result.tool_calls_used == 4
-    assert result.answer == "January still states 4412."
+    assert [entry.arguments for entry in result.tool_trace] == [{"query": "q0"}] * 4
+    assert result.answer == "answer"
 
 
 def test_neo4j_writes_bind_the_user_id() -> None:

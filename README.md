@@ -64,7 +64,7 @@ backend/src/jewel/
   ingestion/      Passage extraction, extraction cache, build pipeline
   kg/             Extraction parsing, graph records, Neo4j and in-memory stores
   retrieval/hippo Linking, time filter and Personalized PageRank
-  agents/         The tool-using agent loop and the JSON decider for the answer model
+  agents/         The LangGraph tool-calling agent (create_agent) and its chat adapter
   llm/            Ollama, OpenAI-compatible chat, embedders, per-request model choices
 backend/tests/    pytest suite (database tests need a throwaway Postgres)
 frontend/src/     Landing page, signed-in workspace (Documents, Graph, Ask), API client

@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
 
+from jewel.agents.chat_model import ToolCallingChat
 from jewel.agents.graph import run_agent
-from jewel.agents.kimi_decider import KimiDecider
 from jewel.auth.dependencies import CurrentUser
 from jewel.db.postgres import DbConn
 from jewel.documents import repository
@@ -43,7 +43,8 @@ def ask(body: AskBody, request: Request, user: CurrentUser, conn: DbConn) -> dic
         user_id=str(user["id"]),
         store=store,
         embedder=embedder,
-        decider=KimiDecider(make_agent_chat(body.agent)),
+        # The answer call keeps the default 1024-token budget; Kimi thinking stays off.
+        model=ToolCallingChat(client=make_agent_chat(body.agent)),
         as_of=datetime.now(UTC),
         # Bound to the session user here; the model only ever names a document id.
         stored_chunks=lambda document_id: repository.chunk_texts(conn, user["id"], document_id),

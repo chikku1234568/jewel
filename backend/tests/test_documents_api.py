@@ -1,11 +1,14 @@
 """Document routes against a real Postgres and a temporary upload directory."""
 
+import io
 import json
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
 
+from jewel.api.routes import ask as ask_routes
 from jewel.api.routes import documents as documents_routes
 from jewel.auth.users import upsert_user
 from jewel.documents import repository
@@ -305,6 +308,68 @@ def test_build_stores_chunks_and_counts_triples_kept(
     bob = upsert_user(db, "sub-b", "bob@example.com", "Bob")
     assert repository.chunk_texts(db, bob["id"], doc["id"]) == {}
     assert repository.chunk_texts(db, user["id"], "not-a-uuid") == {}
+
+
+def test_ask_keeps_its_shape_and_reads_the_stored_chunks(
+    client, db, settings, offline_build: MemoryGraphStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /ask through create_agent, with a scripted Kimi host and no Neo4j."""
+    user = sign_in(client, db, settings, "sub-a", "alice@example.com")
+    text = " ".join(f"Person {i} holds key {i}." for i in range(600))
+    doc = upload(client, "keys.txt", text.encode(), "text/plain").json()
+    client.post(f"/documents/{doc['id']}/build")
+    assert _wait_for_build(client, doc["id"])["status"] == "ready"
+
+    class Store:
+        def __init__(self, driver) -> None:
+            pass
+
+        def load_user(self, user_id: str) -> MemoryGraphStore:
+            assert user_id == str(user["id"])
+            return offline_build
+
+    def tool_call(name: str, arguments: dict) -> dict:
+        function = {"name": name, "arguments": json.dumps(arguments)}
+        return {
+            "content": "",
+            "tool_calls": [{"id": name, "type": "function", "function": function}],
+        }
+
+    replies = [
+        tool_call("search_graph", {"query": "Who holds key 7?"}),
+        tool_call("read_document", {"document_id": doc["id"]}),
+        {"content": "Person 7 holds key 7."},
+    ]
+    sent: list[dict] = []
+
+    def urlopen(request, timeout):
+        sent.append(json.loads(request.data))
+        reply = {"choices": [{"message": replies.pop(0)}]}
+        return io.BytesIO(json.dumps(reply).encode())
+
+    monkeypatch.setattr(ask_routes, "Neo4jGraphStore", Store)
+    monkeypatch.setattr(ask_routes, "make_embedder", lambda choice: HashingEmbedder())
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+    response = client.post(
+        "/ask", json={"question": "Who holds key 7?", "agent": {"api_key": "sk-test"}}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body) == {
+        "answer",
+        "tool_calls_used",
+        "trace",
+        "highlight_entity_ids",
+        "highlight_relationship_ids",
+    }
+    assert body["answer"] == "Person 7 holds key 7."
+    assert body["tool_calls_used"] == 2
+    assert [entry["name"] for entry in body["trace"]] == ["search_graph", "read_document"]
+    # The read observation is a stored chunk row, read from Postgres for this user.
+    stored = repository.chunk_texts(db, user["id"], doc["id"])
+    assert any(chunk in sent[-1]["messages"][-1]["content"] for chunk in stored.values())
+    assert all(str(user["id"]) not in json.dumps(request) for request in sent)
 
 
 def test_delete_removes_the_stored_chunks(

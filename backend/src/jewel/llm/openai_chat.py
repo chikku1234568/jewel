@@ -43,7 +43,33 @@ class OpenAICompatibleChat:
 
     def complete(self, system: str, user: str, *, max_tokens: int = DEFAULT_MAX_TOKENS) -> str:
         """One chat completion. ``max_tokens`` is sent to Kimi models only (see ``_body``)."""
-        body = json.dumps(_body(self.model, system, user, max_tokens)).encode()
+        message = self._send(_body(self.model, system, user, max_tokens))
+        content = message.get("content")
+        if not content:
+            if message.get("reasoning_content"):
+                raise RuntimeError("kimi returned thinking text and no answer")
+            raise RuntimeError("extraction model returned an empty answer")
+        return str(content)
+
+    def chat(
+        self,
+        messages: list[dict],
+        *,
+        tools: list[dict] | None = None,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> dict:
+        """One turn of a tool-calling conversation; returns the assistant message dict.
+
+        Used by the agent (``jewel.agents.chat_model``). Same retries and Kimi settings
+        as ``complete``. The reply may hold ``tool_calls`` and no ``content``.
+        """
+        payload = _payload(self.model, messages, max_tokens)
+        if tools:
+            payload["tools"] = tools
+        return self._send(payload)
+
+    def _send(self, payload: dict) -> dict:
+        body = json.dumps(payload).encode()
         connection_failures = 0
         rate_limited = 0
         while True:
@@ -67,7 +93,7 @@ class OpenAICompatibleChat:
             if self._stopped.wait(delay):
                 raise RuntimeError("extraction request stopped")
 
-    def _post(self, body: bytes) -> str:
+    def _post(self, body: bytes) -> dict:
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=body,
@@ -80,12 +106,9 @@ class OpenAICompatibleChat:
         with urllib.request.urlopen(request, timeout=120) as response:
             payload = json.loads(response.read().decode())
         message = payload["choices"][0]["message"]
-        content = message.get("content") if isinstance(message, dict) else None
-        if not content:
-            if isinstance(message, dict) and message.get("reasoning_content"):
-                raise RuntimeError("kimi returned thinking text and no answer")
+        if not isinstance(message, dict):
             raise RuntimeError("extraction model returned an empty answer")
-        return str(content)
+        return message
 
 
 def _rate_limit_delay(exc: HTTPError, retry: int) -> float:
@@ -106,18 +129,18 @@ def _rate_limit_delay(exc: HTTPError, retry: int) -> float:
 
 
 def _body(model: str, system: str, user: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> dict:
+    """A system + user request (extraction, or any single-turn call)."""
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    return _payload(model, messages, max_tokens)
+
+
+def _payload(model: str, messages: list[dict], max_tokens: int = DEFAULT_MAX_TOKENS) -> dict:
     """Kimi K2.6 thinks by default and burns the request timeout. Turn that off.
 
     Kimi models get an explicit ``max_tokens``; other hosts keep their own default. No
     ``temperature`` is sent, because Kimi rejects values other than its fixed one.
     """
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
+    payload: dict = {"model": model, "messages": messages}
     if model.startswith("kimi-k2.6"):
         payload["thinking"] = {"type": "disabled"}
         payload["max_tokens"] = max_tokens
