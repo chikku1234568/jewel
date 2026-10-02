@@ -5,6 +5,9 @@ import time
 import urllib.request
 from urllib.error import HTTPError, URLError
 
+DEFAULT_MAX_TOKENS = 1024
+"""Output cap for Kimi calls unless the caller asks for more (extraction asks for 4096)."""
+
 
 class OpenAICompatibleChat:
     """POST {base_url}/chat/completions. Temperature is omitted so strict hosts accept it."""
@@ -16,8 +19,9 @@ class OpenAICompatibleChat:
         if not self.model or not self._api_key or not self.base_url:
             raise ValueError("model, base URL, and api key are required")
 
-    def complete(self, system: str, user: str) -> str:
-        body = json.dumps(_body(self.model, system, user)).encode()
+    def complete(self, system: str, user: str, *, max_tokens: int = DEFAULT_MAX_TOKENS) -> str:
+        """One chat completion. ``max_tokens`` is sent to Kimi models only (see ``_body``)."""
+        body = json.dumps(_body(self.model, system, user, max_tokens)).encode()
         last_error: Exception | None = None
         for attempt in range(3):
             request = urllib.request.Request(
@@ -48,8 +52,12 @@ class OpenAICompatibleChat:
         raise RuntimeError(f"extraction host is not reachable ({reason})") from last_error
 
 
-def _body(model: str, system: str, user: str) -> dict:
-    """Kimi K2.6 thinks by default and burns the request timeout. Turn that off."""
+def _body(model: str, system: str, user: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> dict:
+    """Kimi K2.6 thinks by default and burns the request timeout. Turn that off.
+
+    Kimi models get an explicit ``max_tokens``; other hosts keep their own default. No
+    ``temperature`` is sent, because Kimi rejects values other than its fixed one.
+    """
     payload = {
         "model": model,
         "messages": [
@@ -59,8 +67,8 @@ def _body(model: str, system: str, user: str) -> dict:
     }
     if model.startswith("kimi-k2.6"):
         payload["thinking"] = {"type": "disabled"}
-        payload["max_tokens"] = 1024
+        payload["max_tokens"] = max_tokens
     elif model.startswith("kimi-k3"):
         payload["reasoning_effort"] = "low"
-        payload["max_tokens"] = 1024
+        payload["max_tokens"] = max_tokens
     return payload
