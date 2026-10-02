@@ -168,8 +168,8 @@ export function Workspace() {
           <div className="area-head">
             <h1 id="graph-title">Graph</h1>
             <p className="lede">
-              The names found in your files and the statements that connect them. Choose a name to
-              read the sentence it comes from.
+              One file at a time: the names found in it and the statements that connect them.
+              Click a name to see only its edges, or a line to read the sentence it comes from.
             </p>
           </div>
           <GraphPanel refreshKey={graphKey} />

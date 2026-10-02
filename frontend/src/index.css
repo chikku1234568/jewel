@@ -811,6 +811,27 @@ textarea:focus {
   gap: 1rem;
 }
 
+.graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.graph-file {
+  display: block;
+  flex: 0 1 26rem;
+  min-width: 0;
+}
+
+.graph-focus {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--tap);
+}
+
 .graph-meta {
   margin-bottom: 1.25rem;
   font-size: 0.875rem;
@@ -818,42 +839,43 @@ textarea:focus {
 
 .graph-grid {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   gap: clamp(2rem, 4vw, 3.5rem);
   align-items: start;
 }
 
-.graph-names .field {
+/* Cytoscape draws into this box; it needs an explicit height. */
+.graph-canvas {
+  height: clamp(22rem, 62vh, 40rem);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  touch-action: none; /* let Cytoscape handle drag and pinch instead of the page */
+}
+
+.triple-button {
   display: block;
-  margin-bottom: 1rem;
+  width: 100%;
+  min-height: 0;
+  padding: 0.6rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
 }
 
-.nodes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.triple-button:hover {
+  background: var(--accent-soft);
 }
 
-.node {
-  min-height: 2.5rem;
-  border-radius: 999px;
-  padding: 0.35rem 0.9rem;
-  font-size: 0.9375rem;
-}
-
-.node-type {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.node.selected {
-  border-color: var(--accent);
+.triple-button.selected {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.pick-statement + .pick-statement {
+  margin-top: 1.25rem;
 }
 
 .graph-detail {
@@ -901,7 +923,6 @@ textarea:focus {
 }
 
 .triples li {
-  padding: 0.7rem 0;
   border-bottom: 1px solid var(--rule);
   font-size: 0.9375rem;
 }
@@ -1006,6 +1027,10 @@ textarea:focus {
     padding-left: 0;
     border-top: 1px solid var(--rule);
     padding-top: 1.75rem;
+  }
+
+  .graph-canvas {
+    height: clamp(18rem, 55vh, 28rem);
   }
 
   .area-side {
