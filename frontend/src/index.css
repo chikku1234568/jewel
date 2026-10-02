@@ -725,6 +725,19 @@ textarea:focus {
   background: var(--danger);
 }
 
+.triples-kept {
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One line under the row's buttons; the actions cell itself does not wrap. */
+.library .actions .build-note {
+  margin: 0.4rem 0 0;
+  white-space: normal;
+}
+
 .progress {
   display: flex;
   flex-direction: column;
@@ -1138,6 +1151,11 @@ textarea:focus {
 
   .library .actions .button {
     flex: 1 1 0;
+  }
+
+  .library .actions .build-note {
+    flex-basis: 100%;
+    margin-top: 0;
   }
 
   .progress progress {

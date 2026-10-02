@@ -34,8 +34,11 @@ export interface DocumentSummary {
   uploaded_at: string
   status: DocumentStatus
   error: string | null
+  /** Passages of the running build that are done, and how many there are. */
   build_done?: number
   build_total?: number
+  /** Triples written to the graph by this file's last finished build. */
+  triples_kept?: number
 }
 
 export interface DocumentDetail extends DocumentSummary {
