@@ -1,7 +1,7 @@
 # jewel
 
 jewel is a personal live knowledge graph over your own documents. You sign in with
-Google, upload PDF, `.txt`, `.md` or `.docx` files, and build each file into a
+Google, upload PDF, Word, PowerPoint, Excel, HTML, `.txt` or `.md` files, and build each file into a
 knowledge graph that belongs only to your account. You can browse the entities and the
 sentences that connect them, and ask questions. One agent answers by searching your graph
 and quoting the passages of your files that it used.
@@ -48,7 +48,7 @@ choices, including typed keys, in `sessionStorage` for the current tab.
 | App data | Postgres 17 (users, sessions, OAuth state, documents and extracted text, extraction cache), psycopg, no ORM |
 | Graph | Neo4j 5 Community (`neo4j:5.26-community`), official Python driver |
 | Retrieval | Embedding similarity plus Personalized PageRank over a networkx graph, in the API process |
-| Parsing | pypdf (text layer only, no OCR), python-docx, UTF-8 text |
+| Parsing | MarkItDown to Markdown (PDF text layer only, no OCR; .docx, .pptx, .xlsx, .html), pypdf page count, UTF-8 text |
 | Models | Ollama (local Qwen 2.5 7B) or OpenAI-compatible chat APIs; fastembed (local BGE, Nomic, E5) or OpenAI-compatible embeddings; Kimi by default for answers |
 | CI | GitHub Actions: ruff and pytest against Postgres; oxlint, typecheck and build for the frontend |
 
@@ -60,11 +60,11 @@ backend/src/jewel/
   auth/           Google OAuth, server-side sessions, current-user dependency
   db/             Postgres connection and schema.sql (applied at startup)
   documents/      Upload rules, file storage under JEWEL_UPLOAD_DIR, document rows
-  parsing/        PDF, text and .docx to plain text
+  parsing/        Uploads to Markdown (MarkItDown), PDF page check, plain text
   ingestion/      Passage extraction, extraction cache, build pipeline
   kg/             Extraction parsing, graph records, Neo4j and in-memory stores
   retrieval/hippo Linking, time filter and Personalized PageRank
-  agents/         The tool-using agent loop and the JSON decider for the answer model
+  agents/         The LangGraph tool-calling agent (create_agent) and its chat adapter
   llm/            Ollama, OpenAI-compatible chat, embedders, per-request model choices
 backend/tests/    pytest suite (database tests need a throwaway Postgres)
 frontend/src/     Landing page, signed-in workspace (Documents, Graph, Ask), API client

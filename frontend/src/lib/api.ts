@@ -6,8 +6,8 @@
  * allows exactly the frontend origin with credentials.
  *
  * Mounted today: GET /auth/google (a browser navigation, not a fetch), POST /auth/logout,
- * GET /me, and POST / GET /documents, GET / DELETE /documents/{id}. Graph and Ask
- * belong to a later pass.
+ * GET /me, POST / GET /documents, GET / DELETE /documents/{id}, the build and stop
+ * routes under /documents/{id}, GET /graph, and POST /ask.
  */
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -34,8 +34,11 @@ export interface DocumentSummary {
   uploaded_at: string
   status: DocumentStatus
   error: string | null
+  /** Passages of the running build that are done, and how many there are. */
   build_done?: number
   build_total?: number
+  /** Triples written to the graph by this file's last finished build. */
+  triples_kept?: number
 }
 
 export interface DocumentDetail extends DocumentSummary {
@@ -45,7 +48,7 @@ export interface DocumentDetail extends DocumentSummary {
 }
 
 /** File types the API accepts, for the file picker. */
-export const ACCEPTED_FILE_TYPES = '.pdf,.txt,.md,.docx'
+export const ACCEPTED_FILE_TYPES = '.pdf,.docx,.pptx,.xlsx,.html,.htm,.txt,.md'
 
 export class ApiError extends Error {
   readonly status: number

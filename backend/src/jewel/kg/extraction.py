@@ -35,6 +35,9 @@ class ExtractedTriple(BaseModel):
     quote: str = Field(min_length=1)
     start: int | None = None
     end: int | None = None
+    # Which build chunk (0-based) the quote was checked against. Set by the build, never
+    # read from model output.
+    chunk_ordinal: int | None = None
 
 
 class Extraction(BaseModel):

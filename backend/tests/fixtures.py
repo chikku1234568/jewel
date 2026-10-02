@@ -1,4 +1,4 @@
-"""Programmatic test fixtures: PDFs, .docx files, and signed test ID tokens.
+"""Programmatic test fixtures: PDFs, Office files, and signed test ID tokens.
 
 Nothing here touches the network; no binaries are committed.
 """
@@ -9,6 +9,8 @@ from typing import Any
 
 import docx
 import jwt
+import openpyxl
+import pptx
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 
@@ -64,6 +66,28 @@ def make_docx(paragraphs: list[str], table: list[list[str]] | None = None) -> by
                 grid.cell(r, c).text = value
     buffer = io.BytesIO()
     document.save(buffer)
+    return buffer.getvalue()
+
+
+def make_pptx(slides: list[str]) -> bytes:
+    """One title-only slide per item (python-pptx comes with ``markitdown[pptx]``)."""
+    presentation = pptx.Presentation()
+    layout = presentation.slide_layouts[5]  # "Title Only"
+    for title in slides:
+        presentation.slides.add_slide(layout).shapes.title.text = title
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def make_xlsx(rows: list[list[str]]) -> bytes:
+    """One sheet with these rows (openpyxl comes with ``markitdown[xlsx]``)."""
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    for row in rows:
+        sheet.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
     return buffer.getvalue()
 
 

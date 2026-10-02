@@ -1,4 +1,11 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 import { Link } from 'react-router-dom'
 import {
   askQuestion,
@@ -8,6 +15,13 @@ import {
   type EmbeddingChoice,
   type GraphView,
 } from '../lib/api'
+import {
+  documentNodeId,
+  drawingFor,
+  tripleCounts,
+  type FileDrawing,
+} from '../lib/graphElements'
+import { GraphCanvas, type GraphPick } from './GraphCanvas'
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
@@ -17,12 +31,24 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
 }
 
-/** The signed-in user's entities and the sentences that connect them. */
+/** The file the selector opens on: the first one with something to draw. */
+function defaultDocument(graph: GraphView): string | null {
+  const counts = tripleCounts(graph)
+  const withTriples = graph.documents.find((doc) => (counts.get(doc.id) ?? 0) > 0)
+  return (withTriples ?? graph.documents[0])?.id ?? null
+}
+
+/**
+ * The signed-in user's graph, one file at a time, drawn with Cytoscape.js. A click shows
+ * the quote, predicate and filename. This is a picture of `GET /graph`; it is not the
+ * PageRank walk and never calls Ask.
+ */
 export function GraphPanel({ refreshKey }: { refreshKey: number }) {
   const [graph, setGraph] = useState<GraphView | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [filter, setFilter] = useState('')
+  const [documentId, setDocumentId] = useState<string | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [pick, setPick] = useState<GraphPick>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -31,6 +57,15 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
         if (cancelled) return
         setGraph(value)
         setError(null)
+        // Keep the chosen file across refreshes unless it is gone (deleted or rebuilt away).
+        setDocumentId((current) =>
+          current && value.documents.some((doc) => doc.id === current)
+            ? current
+            : defaultDocument(value),
+        )
+        setFocusId((current) =>
+          current && value.entities.some((entity) => entity.id === current) ? current : null,
+        )
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(message(err))
@@ -39,6 +74,17 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
       cancelled = true
     }
   }, [refreshKey])
+
+  const drawing = useMemo(
+    () => (graph && documentId ? drawingFor(graph, documentId, focusId) : null),
+    [graph, documentId, focusId],
+  )
+  const counts = useMemo(() => (graph ? tripleCounts(graph) : new Map<string, number>()), [graph])
+  const onPick = useCallback((next: GraphPick) => {
+    setPick(next)
+    // Clicking an entity limits the drawing to that entity's edges.
+    if (next?.kind === 'entity') setFocusId(next.id)
+  }, [])
 
   if (error) {
     return (
@@ -50,7 +96,7 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
   if (!graph) {
     return <p className="hint">Loading your graph…</p>
   }
-  if (graph.entities.length === 0) {
+  if (graph.documents.length === 0 || !drawing) {
     return (
       <div className="empty-block">
         <p className="empty">
@@ -63,113 +109,166 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
     )
   }
 
-  const names = new Map(graph.entities.map((entity) => [entity.id, entity.name]))
-  const files = new Map(graph.documents.map((doc) => [doc.id, doc.filename]))
-  const entity = graph.entities.find((item) => item.id === selected) ?? null
-  const source =
-    graph.triples.find(
-      (triple) => triple.source_id === selected || triple.target_id === selected,
-    ) ?? null
-  const quote = source?.quote ?? null
-  const needle = filter.trim().toLowerCase()
-  const shown = needle
-    ? graph.entities.filter((item) => item.name.toLowerCase().includes(needle))
-    : graph.entities
-  const triples = entity
-    ? graph.triples.filter(
-        (triple) => triple.source_id === entity.id || triple.target_id === entity.id,
-      )
-    : graph.triples
+  const names = new Map(graph.entities.map((entity) => [entity.id, entity]))
+  const nameOf = (id: string) => names.get(id)?.name ?? id
+  const focus = focusId ? (names.get(focusId) ?? null) : null
+  const pickedTriple = pick?.kind === 'triple' ? pick.id : null
+  const selectedId =
+    pick?.kind === 'document' ? documentNodeId(drawing.documentId) : (pick?.id ?? null)
+
+  function chooseFile(id: string) {
+    setDocumentId(id)
+    setFocusId(null)
+    setPick(null)
+  }
 
   return (
     <div className="graph">
+      <div className="graph-toolbar">
+        <label className="field graph-file">
+          <span className="field-label">File</span>
+          <select value={drawing.documentId} onChange={(event) => chooseFile(event.target.value)}>
+            {graph.documents.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                {doc.filename} ({plural(counts.get(doc.id) ?? 0, 'statement', 'statements')})
+              </option>
+            ))}
+          </select>
+        </label>
+        {focus ? (
+          <div className="graph-focus">
+            <span className="hint small">
+              Showing the edges of <strong>{focus.name}</strong>
+            </span>
+            <button
+              type="button"
+              className="button button-small button-quiet"
+              onClick={() => {
+                setFocusId(null)
+                setPick(null)
+              }}
+            >
+              Show whole file
+            </button>
+          </div>
+        ) : null}
+      </div>
       <p className="graph-meta hint">
-        {plural(graph.entities.length, 'name', 'names')} ·{' '}
-        {plural(graph.triples.length, 'statement', 'statements')} ·{' '}
-        {plural(graph.documents.length, 'file', 'files')}
+        {plural(drawing.entities.length, 'name', 'names')} ·{' '}
+        {plural(drawing.triples.length, 'statement', 'statements')} in this view. Drag to move,
+        scroll or pinch to zoom.
       </p>
-      <div className="graph-grid">
-        <div className="graph-names">
-          <label className="field">
-            <span className="visually-hidden">Filter names</span>
-            <input
-              type="search"
-              placeholder="Filter names"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
+
+      {drawing.triples.length === 0 ? (
+        <p className="empty">No statements were kept from this file.</p>
+      ) : (
+        <div className="graph-grid">
+          <GraphCanvas drawing={drawing} selectedId={selectedId} onPick={onPick} />
+          <div className="graph-detail" aria-live="polite">
+            <PickDetail
+              pick={pick}
+              drawing={drawing}
+              nameOf={nameOf}
+              entityType={(id) => names.get(id)?.type ?? ''}
             />
-          </label>
-          {shown.length === 0 ? (
-            <p className="hint">No name matches “{filter}”.</p>
-          ) : (
-            <ul className="nodes">
-              {shown.map((item) => (
-                <li key={item.id}>
+            <h3 className="block-title">Statements in this view</h3>
+            <ul className="triples">
+              {drawing.triples.map((triple) => (
+                <li key={triple.id}>
                   <button
                     type="button"
-                    className={selected === item.id ? 'node selected' : 'node'}
-                    aria-pressed={selected === item.id}
-                    onClick={() => setSelected(item.id)}
+                    className={pickedTriple === triple.id ? 'triple-button selected' : 'triple-button'}
+                    aria-pressed={pickedTriple === triple.id}
+                    onClick={() => setPick({ kind: 'triple', id: triple.id })}
                   >
-                    {item.name}
-                    <span className="node-type"> {item.type}</span>
+                    <span className="triple-end">{nameOf(triple.source_id)}</span>{' '}
+                    <span className="triple-predicate">{triple.predicate}</span>{' '}
+                    <span className="triple-end">{nameOf(triple.target_id)}</span>
                   </button>
                 </li>
               ))}
             </ul>
-          )}
-        </div>
-
-        <div className="graph-detail" aria-live="polite">
-          {entity ? (
-            <div className="entity">
-              <p className="eyebrow">{entity.type}</p>
-              <h2 className="entity-name">{entity.name}</h2>
-              {quote ? (
-                <blockquote className="quote">
-                  <p>{quote}</p>
-                  {source && files.get(source.document_id) ? (
-                    <footer>{files.get(source.document_id)}</footer>
-                  ) : null}
-                </blockquote>
-              ) : null}
-            </div>
-          ) : (
-            <p className="hint entity-placeholder">
-              Choose a name to see the sentence it comes from.
-            </p>
-          )}
-
-          <div className="block-head">
-            <h3 className="block-title">
-              {entity ? `Statements about ${entity.name}` : 'All statements'}
-            </h3>
-            {entity ? (
-              <button
-                type="button"
-                className="button button-small button-quiet"
-                onClick={() => setSelected(null)}
-              >
-                Show all
-              </button>
-            ) : null}
           </div>
-          <ul className="triples">
-            {triples.map((triple) => (
-              <li key={triple.id}>
-                <span className="triple-end">
-                  {names.get(triple.source_id) ?? triple.source_id}
-                </span>{' '}
-                <span className="triple-predicate">{triple.predicate}</span>{' '}
-                <span className="triple-end">
-                  {names.get(triple.target_id) ?? triple.target_id}
-                </span>
-              </li>
-            ))}
-          </ul>
         </div>
-      </div>
+      )}
     </div>
+  )
+}
+
+/** The quote, predicate and filename behind whatever was clicked. */
+function PickDetail({
+  pick,
+  drawing,
+  nameOf,
+  entityType,
+}: {
+  pick: GraphPick
+  drawing: FileDrawing
+  nameOf: (id: string) => string
+  entityType: (id: string) => string
+}) {
+  if (pick?.kind === 'triple') {
+    const triple = drawing.triples.find((item) => item.id === pick.id)
+    if (triple) {
+      return (
+        <div className="entity">
+          <p className="eyebrow">Statement</p>
+          <h2 className="entity-name">
+            {nameOf(triple.source_id)}{' '}
+            <span className="triple-predicate">{triple.predicate}</span>{' '}
+            {nameOf(triple.target_id)}
+          </h2>
+          <Quote text={triple.quote} filename={drawing.filename} />
+        </div>
+      )
+    }
+  }
+  if (pick?.kind === 'entity') {
+    const own = drawing.triples.filter(
+      (triple) => triple.source_id === pick.id || triple.target_id === pick.id,
+    )
+    return (
+      <div className="entity">
+        <p className="eyebrow">{entityType(pick.id)}</p>
+        <h2 className="entity-name">{nameOf(pick.id)}</h2>
+        {own.map((triple) => (
+          <div key={triple.id} className="pick-statement">
+            <p className="hint small">
+              {nameOf(triple.source_id)}{' '}
+              <span className="triple-predicate">{triple.predicate}</span>{' '}
+              {nameOf(triple.target_id)}
+            </p>
+            <Quote text={triple.quote} filename={drawing.filename} />
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (pick?.kind === 'document') {
+    return (
+      <div className="entity">
+        <p className="eyebrow">File</p>
+        <h2 className="entity-name">{drawing.filename}</h2>
+        <p className="hint">
+          {plural(drawing.triples.length, 'statement', 'statements')} about{' '}
+          {plural(drawing.entities.length, 'name', 'names')} in this view.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <p className="hint entity-placeholder">
+      Click a name or a line to read the sentence it comes from.
+    </p>
+  )
+}
+
+function Quote({ text, filename }: { text: string; filename: string }) {
+  return (
+    <blockquote className="quote">
+      <p>{text}</p>
+      <footer>{filename}</footer>
+    </blockquote>
   )
 }
 

@@ -1,39 +1,136 @@
-"""One tool-using agent.
+"""One tool-using agent, hosted by LangGraph (``langchain.agents.create_agent``).
 
-The loop is the contract LangGraph's ``create_agent`` will host: the model chooses
-``search_graph`` or ``read_document``, at most four times, then answers. This module
-does not import LangGraph yet, so it can be tested without that package and without
-colliding on the shared lockfile. The model is given the question and tool observations.
-It is not given the user id, a database session, or an API key.
+LangGraph is only the control flow: a model turn, then a tool, then a model turn, until
+the model answers. The two tools call the functions in ``jewel.agents.tools``; Personalized
+PageRank stays in ``jewel.retrieval.hippo.ppr`` and Neo4j stays the document graph.
+
+What the model sees: the system prompt, the question, and tool observations. What it
+never sees: the user id, the graph store, the database, or an API key. Those travel in
+``RunContext``, which LangGraph hands to each tool through ``ToolRuntime``; the runtime
+parameter is not part of the tool schema sent to the model.
+
+The cap is enforced by ``ToolBudget`` (middleware around every model call): one tool call
+per model turn, at most ``MAX_TOOL_CALLS`` in a run, and once they are spent the model is
+called with no tools and told to answer.
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 
-from jewel.agents.state import AgentResult, ToolTraceEntry
-from jewel.agents.tools import ToolError, read_document, search_graph
+from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain.tools import ToolRuntime, tool
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+from jewel.agents.state import AgentResult, KeptTriple, ToolTraceEntry
+from jewel.agents.tools import ChunkSource, ToolError, read_document, search_graph
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.base import EmbeddingModel
 
 MAX_TOOL_CALLS = 4
 
-
-@dataclass(frozen=True)
-class ToolRequest:
-    name: str
-    arguments: dict
-
-
-@dataclass(frozen=True)
-class Decision:
-    """Either a tool call or a final answer."""
-
-    answer: str | None = None
-    tool: ToolRequest | None = None
+SYSTEM_PROMPT = (
+    "You answer questions about a user's own documents. Use the tools; do not answer from "
+    "memory. Call search_graph first. It returns the matching files with their ids and the "
+    "quoted sentences behind the facts it found. If you need more context, call "
+    "read_document with a document id that search_graph returned; it returns up to three "
+    "source passages of that file. Call one tool at a time, at most "
+    f"{MAX_TOOL_CALLS} in total. Answer with quotes copied from the observations, name the "
+    "file each quote comes from, and say so plainly when the documents do not answer the "
+    "question. Do not invent facts."
+)
+FORCE_ANSWER = " You have used all your tool calls. Answer now from what the tools returned."
 
 
-Decider = Callable[[str, list[str], bool], Decision]
+class RunContext:
+    """Per-question dependencies, bound by the caller. Never shown to the model.
+
+    A plain class, not a dataclass: LangGraph's tool schema checks the context with a
+    single ``isinstance``, while a dataclass would make pydantic validate each field, and
+    it cannot validate the ``EmbeddingModel`` protocol.
+    """
+
+    def __init__(
+        self,
+        *,
+        store: MemoryGraphStore,
+        embedder: EmbeddingModel,
+        result: AgentResult,
+        stored_chunks: ChunkSource | None = None,
+    ) -> None:
+        self.store = store
+        self.embedder = embedder
+        self.result = result
+        self.stored_chunks = stored_chunks
+        # Document ids any search in this run returned; read_document opens only these.
+        self.allowed: set[str] = set()
+
+
+# ``runtime`` is injected by LangGraph and left out of the schema the model sees.
+@tool("search_graph")
+def search_graph_tool(query: str, runtime: ToolRuntime[RunContext]) -> str:
+    """Search the user's knowledge graph. Returns files (filename and id) and quotes."""
+    context = runtime.context
+    result = context.result
+    found = search_graph(context.store, context.embedder, result.user_id, query, result.as_of)
+    context.allowed.update(hit.document_id for hit in found.documents)
+    result.returned_document_ids = sorted(context.allowed)
+    for triple in found.triples:
+        kept = KeptTriple(triple.document_id, triple.chunk_ordinal, triple.quote)
+        if kept not in result.kept_triples:
+            result.kept_triples.append(kept)
+    result.highlight_entity_ids = found.entity_ids
+    result.highlight_relationship_ids = found.relationship_ids
+    docs = ", ".join(f"{hit.filename} id={hit.document_id}" for hit in found.documents[:8])
+    quotes = " | ".join(triple.quote for triple in found.triples[:8])
+    summary = f"documents: {docs}. quotes: {quotes}"
+    _trace(result, "search_graph", {"query": query}, summary)
+    return summary
+
+
+@tool("read_document")
+def read_document_tool(document_id: str, runtime: ToolRuntime[RunContext]) -> str:
+    """Open up to three source passages of a document id that search_graph returned."""
+    context = runtime.context
+    result = context.result
+    try:
+        chunks = read_document(
+            context.store,
+            result.user_id,
+            document_id,
+            context.allowed,
+            result.kept_triples,
+            context.stored_chunks,
+        )
+    except ToolError as exc:
+        _trace(result, "read_document", {"document_id": document_id}, str(exc))
+        return str(exc)
+    summary = f"opened {len(chunks)} {'passage' if len(chunks) == 1 else 'passages'}"
+    _trace(result, "read_document", {"document_id": document_id}, summary)
+    # The model sees the whole chunk text: no slicing, or it cannot check a quote.
+    return _passages_observation(document_id, chunks)
+
+
+class ToolBudget(AgentMiddleware):
+    """At most ``limit`` tool calls per run, one per model turn; then the model must answer.
+
+    The count is the number of tool results already in the conversation, so it cannot
+    drift from what actually ran. A reply that asks for several tools at once keeps only
+    the first, which keeps the trace in order and the cap exact.
+    """
+
+    def __init__(self, limit: int = MAX_TOOL_CALLS) -> None:
+        super().__init__()
+        self.limit = limit
+
+    def wrap_model_call(self, request: ModelRequest, handler) -> ModelResponse:
+        used = sum(isinstance(message, ToolMessage) for message in request.messages)
+        if used < self.limit:
+            return _keep_tool_calls(handler(request), 1)
+        system = request.system_message.text if request.system_message else SYSTEM_PROMPT
+        forced = request.override(tools=[], system_message=SystemMessage(system + FORCE_ANSWER))
+        # No tools are offered, so a real model cannot call one; drop any it invents.
+        return _keep_tool_calls(handler(forced), 0)
 
 
 def run_agent(
@@ -42,58 +139,50 @@ def run_agent(
     user_id: str,
     store: MemoryGraphStore,
     embedder: EmbeddingModel,
-    decider: Decider,
+    model: BaseChatModel,
     as_of: datetime,
+    stored_chunks: ChunkSource | None = None,
 ) -> AgentResult:
-    """Run the loop. ``decider`` sees the question and observations, not ``user_id``."""
+    """Answer one question. ``model`` sees the question and observations, not ``user_id``.
+
+    ``stored_chunks`` reads this user's stored build chunks; it is bound by the caller.
+    """
     result = AgentResult(question=question, user_id=user_id, as_of=as_of)
-    observations: list[str] = []
-    allowed: set[str] = set()
-    while result.tool_calls_used < MAX_TOOL_CALLS:
-        decision = decider(question, list(observations), False)
-        if decision.tool is None:
-            result.answer = decision.answer or ""
-            return result
-        summary = _call_tool(decision.tool, result, store, embedder, allowed, observations)
-        result.tool_trace.append(
-            ToolTraceEntry(
-                name=decision.tool.name, arguments=decision.tool.arguments, summary=summary
-            )
-        )
-        result.tool_calls_used += 1
-    forced = decider(question, list(observations), True)
-    result.answer = forced.answer or ""
+    agent = create_agent(
+        model,
+        tools=[search_graph_tool, read_document_tool],
+        system_prompt=SYSTEM_PROMPT,
+        middleware=[ToolBudget(MAX_TOOL_CALLS)],
+        context_schema=RunContext,
+    )
+    context = RunContext(store=store, embedder=embedder, result=result, stored_chunks=stored_chunks)
+    state = agent.invoke({"messages": [HumanMessage(question)]}, context=context)
+    final = state["messages"][-1]
+    result.answer = final.text if isinstance(final, AIMessage) else ""
+    result.tool_calls_used = len(result.tool_trace)
     return result
 
 
-def _call_tool(
-    tool: ToolRequest,
-    result: AgentResult,
-    store: MemoryGraphStore,
-    embedder: EmbeddingModel,
-    allowed: set[str],
-    observations: list[str],
-) -> str:
-    if tool.name == "search_graph":
-        query = str(tool.arguments.get("query", result.question))
-        found = search_graph(store, embedder, result.user_id, query, result.as_of)
-        allowed.update(hit.document_id for hit in found.documents)
-        result.returned_document_ids = sorted(allowed)
-        result.highlight_entity_ids = found.entity_ids
-        result.highlight_relationship_ids = found.relationship_ids
-        docs = ", ".join(f"{hit.filename} id={hit.document_id}" for hit in found.documents[:8])
-        quotes = " | ".join(triple.quote for triple in found.triples[:8])
-        summary = f"documents: {docs}. quotes: {quotes}"
-        observations.append(summary)
-        return summary
-    if tool.name == "read_document":
-        document_id = str(tool.arguments.get("document_id", ""))
-        try:
-            text = read_document(store, result.user_id, document_id, allowed)
-        except ToolError as exc:
-            observations.append(str(exc))
-            return str(exc)
-        observations.append(text[:240])
-        return "opened document"
-    observations.append("unknown tool")
-    return "unknown tool"
+def _trace(result: AgentResult, name: str, arguments: dict, summary: str) -> None:
+    result.tool_trace.append(ToolTraceEntry(name=name, arguments=arguments, summary=summary))
+
+
+def _keep_tool_calls(response: ModelResponse, limit: int) -> ModelResponse:
+    messages = []
+    for message in response.result:
+        if isinstance(message, AIMessage) and (
+            len(message.tool_calls) > limit or (limit == 0 and message.invalid_tool_calls)
+        ):
+            update = {"tool_calls": message.tool_calls[:limit]}
+            if limit == 0:
+                update["invalid_tool_calls"] = []
+            message = message.model_copy(update=update)
+        messages.append(message)
+    return ModelResponse(result=messages, structured_response=response.structured_response)
+
+
+def _passages_observation(document_id: str, chunks: list[str]) -> str:
+    if not chunks:
+        return f"document id={document_id}: no passage of it holds a quote the search kept"
+    parts = [f"document id={document_id}, passage {n}:\n{text}" for n, text in enumerate(chunks, 1)]
+    return "\n\n".join(parts)

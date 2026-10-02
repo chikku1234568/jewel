@@ -13,13 +13,18 @@ import {
   type ExtractionChoice,
 } from '../lib/api'
 
+/** What each status means for the person: is this file in their graph or not. */
 const STATUS_LABELS: Record<DocumentSummary['status'], string> = {
   stored: 'Stored',
   parsing: 'Reading',
-  parsed: 'Parsed',
+  parsed: 'Not in the graph',
   failed: 'Failed',
-  extracting: 'Building graph',
-  ready: 'Ready',
+  extracting: 'Adding this file',
+  ready: 'In the graph',
+}
+
+function triplesKept(count: number): string {
+  return `${count} ${count === 1 ? 'triple' : 'triples'} kept`
 }
 
 function formatTime(iso: string): string {
@@ -180,7 +185,8 @@ export function DocumentLibrary({
           </button>
         </form>
         <p className="hint small">
-          PDF, text, Markdown or Word (.docx), up to 20 MB. PDFs over 50 pages are rejected.
+          PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), HTML, text or Markdown, up to 20
+          MB. PDFs over 50 pages are rejected. Scanned PDFs without a text layer cannot be read.
         </p>
       </section>
 
@@ -205,7 +211,7 @@ export function DocumentLibrary({
           <p className="hint">Loading your library…</p>
         ) : documents.length === 0 ? (
           <p className="empty">
-            Your library is empty. Upload a PDF, text, Markdown or Word file to get started.
+            Your library is empty. Upload a PDF, Office, HTML, text or Markdown file to get started.
           </p>
         ) : (
           <table className="library">
@@ -248,6 +254,9 @@ export function DocumentLibrary({
                         </span>
                       </div>
                     ) : null}
+                    {(doc.triples_kept ?? 0) > 0 ? (
+                      <div className="triples-kept">{triplesKept(doc.triples_kept ?? 0)}</div>
+                    ) : null}
                     {doc.status === 'failed' && doc.error ? (
                       <div className="error small">{doc.error}</div>
                     ) : null}
@@ -287,6 +296,11 @@ export function DocumentLibrary({
                     >
                       Delete
                     </button>
+                    {doc.status !== 'extracting' ? (
+                      <p className="build-note hint small">
+                        Adds this file only. Earlier files stay as they are.
+                      </p>
+                    ) : null}
                   </td>
                 </tr>
               ))}
