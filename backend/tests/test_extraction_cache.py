@@ -1,13 +1,13 @@
 """Extraction cache keys and hits. No database and no model call on a hit."""
 
 import threading
-import time
 
 from jewel.ingestion.extraction_cache import MemoryExtractionCache, extraction_key
 from jewel.ingestion.live import BuildCancelled, build_parsed_text
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.hashing import HashingEmbedder
-from jewel.llm.openai_chat import _body
+from jewel.llm.ollama import OllamaChat
+from jewel.llm.openai_chat import OpenAICompatibleChat, _body
 
 PASSAGE = "The alarm code is 4412."
 _RAW = (
@@ -62,23 +62,34 @@ def test_second_build_of_the_same_passage_does_not_call_the_model() -> None:
     assert len(cache.rows) == 1
 
 
-def test_api_extraction_runs_passages_together() -> None:
+def _max_in_flight(chat_base: type, needed: int, wait: float) -> int:
+    """Build a 16-passage file and return how many chat calls were in flight at once.
+
+    Each call waits (up to ``wait`` seconds) until ``needed`` calls are inside together, so
+    the API answer does not depend on sleep timing: the pool lets them overlap or it does not.
+    """
     state = {"inside": 0, "max_inside": 0}
     lock = threading.Lock()
+    enough = threading.Event()
 
-    class Chat:
+    class Chat(chat_base):
         model = "kimi-k2.6"
 
-        def complete(self, system: str, user: str) -> str:
+        def __init__(self) -> None:  # no host, no key
+            pass
+
+        def complete(self, system: str, user: str, **_kwargs) -> str:
             with lock:
                 state["inside"] += 1
                 state["max_inside"] = max(state["max_inside"], state["inside"])
-            time.sleep(0.05)
+                if state["inside"] >= needed:
+                    enough.set()
+            enough.wait(timeout=wait)
             with lock:
                 state["inside"] -= 1
             return _RAW
 
-    text = (PASSAGE + " ") * 400
+    text = (PASSAGE + " ") * 2200  # about 16 passages of 3500 characters
     build_parsed_text(
         document_id="doc",
         user_id="user",
@@ -89,7 +100,16 @@ def test_api_extraction_runs_passages_together() -> None:
         embedder=HashingEmbedder(),
         store=MemoryGraphStore(),
     )
-    assert state["max_inside"] > 1
+    return state["max_inside"]
+
+
+def test_eight_api_calls_are_in_flight_together() -> None:
+    assert _max_in_flight(OpenAICompatibleChat, needed=8, wait=5) == 8
+
+
+def test_ollama_runs_one_passage_at_a_time() -> None:
+    # With one worker needed=2 is never met, so each call waits out a short timeout.
+    assert _max_in_flight(OllamaChat, needed=2, wait=0.05) == 1
 
 
 def test_stop_cancels_the_remaining_passages() -> None:

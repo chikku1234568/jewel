@@ -14,7 +14,10 @@ from jewel.llm.ollama import OllamaChat, extract_document
 # A 7B model will not emit valid JSON for a whole paper. A few pages at a time will.
 _EXTRACT_CHUNK = 3500
 _EXTRACT_OVERLAP = 200
-_API_WORKERS = 4
+# Passages of one file sent to an API host at the same time. Bounded on purpose: wider
+# mostly buys HTTP 429s, which the client then waits out (llm/openai_chat.py). Ollama
+# runs one passage at a time on this machine. _BUILD_LOCK still builds one file at a time.
+_API_WORKERS = 8
 
 
 class BuildCancelled(Exception):
