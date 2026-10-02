@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from jewel.api.routes import documents as documents_routes
+from jewel.auth.users import upsert_user
+from jewel.documents import repository
 from jewel.documents.models import DOCX_MEDIA_TYPE, MAX_UPLOAD_BYTES
 from jewel.ingestion.chunking import chunk_text
 from jewel.kg.memory_store import MemoryGraphStore
@@ -297,6 +299,12 @@ def test_build_stores_chunks_and_counts_triples_kept(
     assert row["triples_kept"] == len(triples) == len(chunks)
     assert all(t.quote in chunks[t.chunk_ordinal] for t in triples)
     assert row["build_done"] == row["build_total"] == len(chunks)
+
+    # The chunk reader the ask route binds is scoped to the owner.
+    assert repository.chunk_texts(db, user["id"], doc["id"]) == dict(enumerate(chunks))
+    bob = upsert_user(db, "sub-b", "bob@example.com", "Bob")
+    assert repository.chunk_texts(db, bob["id"], doc["id"]) == {}
+    assert repository.chunk_texts(db, user["id"], "not-a-uuid") == {}
 
 
 def test_delete_removes_the_stored_chunks(

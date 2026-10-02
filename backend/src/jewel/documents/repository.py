@@ -126,3 +126,16 @@ def replace_chunks(
                     for ordinal, text in enumerate(texts)
                 ],
             )
+
+
+def chunk_texts(conn: psycopg.Connection, user_id: Any, document_id: str) -> dict[int, str]:
+    """Stored chunks of the caller's document by ordinal; empty if none or not theirs."""
+    try:
+        parsed = uuid.UUID(document_id)
+    except ValueError:
+        return {}
+    rows = conn.execute(
+        "SELECT ordinal, text FROM document_chunks WHERE document_id = %s AND user_id = %s",
+        (parsed, user_id),
+    ).fetchall()
+    return {row["ordinal"]: row["text"] for row in rows}

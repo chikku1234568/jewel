@@ -1,9 +1,15 @@
-"""Split extracted text into overlapping chunks for the text-search comparison.
+"""Split extracted text into overlapping chunks.
 
-Chunks are not graph nodes.
+Build chunks (``build_chunks``) are the passages sent to the extraction model. They are
+stored in Postgres ``document_chunks`` and ``read_document`` returns them. Chunks are not
+graph nodes and are not embedded.
 """
 
 from dataclasses import dataclass
+
+# A 7B model will not emit valid JSON for a whole paper. A few pages at a time will.
+BUILD_CHUNK_SIZE = 3500
+BUILD_CHUNK_OVERLAP = 200
 
 
 @dataclass(frozen=True)
@@ -30,3 +36,8 @@ def chunk_text(text: str, size: int = 800, overlap: int = 100) -> list[TextChunk
             break
         start = end - overlap
     return chunks
+
+
+def build_chunks(text: str) -> list[TextChunk]:
+    """The build's passages, in ordinal order. Deterministic: same text, same chunks."""
+    return chunk_text(text, size=BUILD_CHUNK_SIZE, overlap=BUILD_CHUNK_OVERLAP)

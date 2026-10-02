@@ -8,6 +8,8 @@ from pydantic import Field
 from jewel.agents.graph import run_agent
 from jewel.agents.kimi_decider import KimiDecider
 from jewel.auth.dependencies import CurrentUser
+from jewel.db.postgres import DbConn
+from jewel.documents import repository
 from jewel.kg.neo4j_store import Neo4jGraphStore
 from jewel.llm.choices import (
     AgentChoice,
@@ -26,7 +28,7 @@ class AskBody(EmbeddingChoice):
 
 
 @router.post("")
-def ask(body: AskBody, request: Request, user: CurrentUser) -> dict:
+def ask(body: AskBody, request: Request, user: CurrentUser, conn: DbConn) -> dict:
     """Search the user's current graph and answer. A new file is visible after it is built."""
     driver = getattr(request.app.state, "neo4j", None)
     if driver is None:
@@ -43,6 +45,8 @@ def ask(body: AskBody, request: Request, user: CurrentUser) -> dict:
         embedder=embedder,
         decider=KimiDecider(make_agent_chat(body.agent)),
         as_of=datetime.now(UTC),
+        # Bound to the session user here; the model only ever names a document id.
+        stored_chunks=lambda document_id: repository.chunk_texts(conn, user["id"], document_id),
     )
     return {
         "answer": result.answer,

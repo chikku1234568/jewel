@@ -5,7 +5,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 
-from jewel.ingestion.chunking import chunk_text
+from jewel.ingestion.chunking import build_chunks
 from jewel.ingestion.extraction_cache import ExtractionCache, extraction_key
 from jewel.ingestion.pipeline import ParsedDocument, build_document
 from jewel.kg.extraction import (
@@ -17,9 +17,6 @@ from jewel.kg.extraction import (
 from jewel.llm.base import ChatModel, EmbeddingModel
 from jewel.llm.ollama import OllamaChat, extract_document
 
-# A 7B model will not emit valid JSON for a whole paper. A few pages at a time will.
-_EXTRACT_CHUNK = 3500
-_EXTRACT_OVERLAP = 200
 # Passages of one file sent to an API host at the same time. Bounded on purpose: wider
 # mostly buys HTTP 429s, which the client then waits out (llm/openai_chat.py). Ollama
 # runs one passage at a time on this machine. _BUILD_LOCK still builds one file at a time.
@@ -51,7 +48,7 @@ def build_parsed_text(
     call, so the stored chunks always match the ordinals on the triples.
     """
     model = getattr(chat, "model", "unknown")
-    chunks = list(chunk_text(text, size=_EXTRACT_CHUNK, overlap=_EXTRACT_OVERLAP))
+    chunks = build_chunks(text)
     if save_chunks is not None:
         save_chunks([chunk.text for chunk in chunks])
     total = len(chunks)
