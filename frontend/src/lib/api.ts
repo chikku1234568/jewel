@@ -6,8 +6,8 @@
  * allows exactly the frontend origin with credentials.
  *
  * Mounted today: GET /auth/google (a browser navigation, not a fetch), POST /auth/logout,
- * GET /me, and POST / GET /documents, GET / DELETE /documents/{id}. Graph and Ask
- * belong to a later pass.
+ * GET /me, POST / GET /documents, GET / DELETE /documents/{id}, the build and stop
+ * routes under /documents/{id}, GET /graph, and POST /ask.
  */
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
