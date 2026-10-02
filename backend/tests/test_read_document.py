@@ -52,6 +52,19 @@ def _store_with(document_id: str, user: str = USER, store: MemoryGraphStore | No
     return store, dict(enumerate(saved[0]))
 
 
+def test_a_chunk_row_that_lost_its_quote_is_not_opened() -> None:
+    """A failed rebuild can leave new chunk rows under an older graph's ordinals."""
+    store, stored = _store_with("inventory")
+    quote = _middle_sentences(3, 1)[0]
+    kept = [KeptTriple("inventory", 0, quote)]
+    opened = read_document(
+        store, USER, "inventory", {"inventory"}, kept, lambda _document_id: stored
+    )
+    assert opened
+    assert quote in opened[0]
+    assert stored[0] not in opened
+
+
 def test_agent_reads_full_chunk_text_of_a_document_its_search_returned() -> None:
     store, stored = _store_with("inventory")
 
@@ -131,10 +144,10 @@ def test_read_rejects_any_document_the_search_did_not_return() -> None:
 def test_chunks_with_the_most_kept_triples_come_first_and_at_most_three() -> None:
     store, stored = _store_with("inventory")
     kept = [
-        *[KeptTriple("inventory", 5, f"q5-{n}") for n in range(3)],
-        *[KeptTriple("inventory", 2, f"q2-{n}") for n in range(2)],
-        KeptTriple("inventory", 7, "q7"),
-        KeptTriple("inventory", 1, "q1"),
+        *[KeptTriple("inventory", 5, quote) for quote in _middle_sentences(5, 3)],
+        *[KeptTriple("inventory", 2, quote) for quote in _middle_sentences(2, 2)],
+        KeptTriple("inventory", 7, _middle_sentences(7, 1)[0]),
+        KeptTriple("inventory", 1, _middle_sentences(1, 1)[0]),
         *[KeptTriple("elsewhere", 9, f"q9-{n}") for n in range(5)],  # another document
     ]
     chunks = read_document(store, USER, "inventory", {"inventory"}, kept, lambda _id: stored)

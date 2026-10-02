@@ -60,7 +60,18 @@ def read_document(
         chunks = stored_chunks(document_id) if stored_chunks is not None else {}
         # Most triples first; ties go to the earlier chunk so the order is stable.
         ranked = sorted(by_ordinal, key=lambda ordinal: (-by_ordinal[ordinal], ordinal))
-        found = [chunks[ordinal] for ordinal in ranked if ordinal in chunks]
+        found = []
+        for ordinal in ranked:
+            chunk = chunks.get(ordinal)
+            if chunk is None:
+                continue
+            # A failed rebuild replaces chunk rows before the graph is rewritten. An
+            # ordinal that no longer contains its quote belongs to that older graph,
+            # so it is skipped and the quote match below runs instead.
+            quotes = [triple.quote for triple in mine if triple.chunk_ordinal == ordinal]
+            if quotes and not any(quote in chunk for quote in quotes):
+                continue
+            found.append(chunk)
         if found:
             return found[:MAX_CHUNKS_PER_READ]
 
