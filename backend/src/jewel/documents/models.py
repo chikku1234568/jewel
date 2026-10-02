@@ -58,6 +58,7 @@ class DocumentSummary(BaseModel):
     error: str | None = None
     build_done: int = 0
     build_total: int = 0
+    triples_kept: int = 0
 
 
 class DocumentDetail(DocumentSummary):

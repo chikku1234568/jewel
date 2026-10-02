@@ -102,6 +102,7 @@ class MemoryGraphStore:
                     document_id=document_id,
                     embedding=embedding,
                     valid_at=document_date,
+                    chunk_ordinal=triple.chunk_ordinal,
                 )
             )
         self._drop_unmentioned(user_id)

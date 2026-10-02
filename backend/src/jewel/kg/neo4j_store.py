@@ -65,7 +65,8 @@ CREATE (a)-[:RELATED_TO {
     predicate: $predicate,
     quote: $quote,
     embedding: $embedding,
-    valid_at: $valid_at
+    valid_at: $valid_at,
+    chunk_ordinal: $chunk_ordinal
 }]->(b)
 """
 
@@ -104,7 +105,7 @@ MATCH (a:Entity {user_id: $user_id})-[r:RELATED_TO {user_id: $user_id}]->
       (b:Entity {user_id: $user_id})
 RETURN r.id AS id, a.id AS source_id, b.id AS target_id, r.predicate AS predicate,
        r.quote AS quote, r.document_id AS document_id, r.embedding AS embedding,
-       r.valid_at AS valid_at
+       r.valid_at AS valid_at, r.chunk_ordinal AS chunk_ordinal
 """
 
 
@@ -175,6 +176,7 @@ class Neo4jGraphStore:
                     quote=triple.quote,
                     embedding=triple_embedding,
                     valid_at=date,
+                    chunk_ordinal=triple.chunk_ordinal,  # null is not stored by Neo4j
                 )
             session.run(_DROP_UNMENTIONED, user_id=user_id)
 
@@ -232,6 +234,7 @@ class Neo4jGraphStore:
                         document_id=row["document_id"],
                         embedding=_vector(row["embedding"]),
                         valid_at=_parse_time(row["valid_at"]),
+                        chunk_ordinal=_ordinal(row["chunk_ordinal"]),
                     )
                 )
         return store
@@ -241,6 +244,11 @@ def _vector(value) -> list[float]:
     if not value:
         return []
     return [float(item) for item in value]
+
+
+def _ordinal(value) -> int | None:
+    """Edges written before chunks were stored have no ordinal property (null)."""
+    return None if value is None else int(value)
 
 
 def _parse_time(value) -> datetime | None:

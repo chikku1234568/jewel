@@ -53,6 +53,9 @@ class GraphTriple:
     embedding: list[float] = field(default_factory=list)
     valid_at: datetime | None = None
     invalid_at: datetime | None = None
+    # Ordinal of the stored build chunk the quote came from. None on graphs built before
+    # chunks were stored; read_document then re-chunks the document text instead.
+    chunk_ordinal: int | None = None
 
 
 @dataclass

@@ -5,7 +5,8 @@
 * ``Entity``: a phrase node (``name``, ``type``, ``embedding``).
 * ``MENTIONS``: Entity -> Document, with ``quote``, offsets, ``valid_at``.
 * ``RELATED_TO``: Entity -> Entity, with ``predicate`` (a property, not a relationship
-  type), ``quote``, offsets, ``document_id``, ``valid_at``, ``invalid_at``.
+  type), ``quote``, offsets, ``document_id``, ``valid_at``, ``invalid_at``, and
+  ``chunk_ordinal`` (the stored build chunk the quote came from; absent on older edges).
 
 Every node and relationship carries ``user_id``.
 """

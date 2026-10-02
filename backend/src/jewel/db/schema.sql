@@ -43,7 +43,22 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_done integer NOT NULL DEFAULT 0;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_total integer NOT NULL DEFAULT 0;
+-- Triples written to the graph by this file's last finished build.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS triples_kept integer NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS documents_user_uploaded_idx ON documents (user_id, uploaded_at DESC);
+
+-- The passages (3500 characters, 200 overlap) a build sent to the extraction model, in
+-- order. Written at the start of each build, before any model call; a rebuild replaces
+-- them. A RELATED_TO edge in Neo4j stores the ordinal of the chunk its quote came from,
+-- so read_document can return that chunk. Removed with the document (ON DELETE CASCADE).
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id           uuid PRIMARY KEY,
+    document_id  uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+    user_id      uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    ordinal      integer NOT NULL,
+    text         text NOT NULL,
+    UNIQUE (document_id, ordinal)
+);
 
 -- Raw model output for one passage. Keyed by model, prompt, generation settings, and the
 -- exact passage text. Shared across users: the same passage extracts the same triples.

@@ -6,12 +6,14 @@ session user, never a client-supplied field.
   (413) and PDFs over 50 pages (422) are rejected before anything is stored. Otherwise
   the file is stored, converted to Markdown text, and the row is returned with status
   ``parsed`` or ``failed`` (with ``error``).
-* ``GET /documents``: the caller's library (id, filename, uploaded_at, status, error).
+* ``GET /documents``: the caller's library (id, filename, uploaded_at, status, error,
+  build progress, and ``triples_kept`` from the last finished build).
 * ``GET /documents/{id}``: the row with extracted text for the owner; 404 otherwise.
-* ``DELETE /documents/{id}``: delete the row and the file for the owner; 404 otherwise.
-  Does not touch Neo4j.
-
-``POST /documents/{id}/build`` belongs to the graph pass and is not implemented here.
+* ``DELETE /documents/{id}``: delete the row, its stored chunks and the file for the owner,
+  and the document's part of the graph when Neo4j is up; 404 otherwise.
+* ``POST /documents/{id}/build``: store this file's chunks, extract triples from them in
+  the background, and write this file only into the user's graph.
+* ``POST /documents/{id}/stop``: stop a running build.
 """
 
 import threading
@@ -147,7 +149,7 @@ def _build_in_background(**kwargs) -> None:
         with connect(kwargs["database_url"]) as conn:
             try:
                 with _BUILD_LOCK:
-                    build_parsed_text(
+                    kept = build_parsed_text(
                         document_id=str(document_id),
                         user_id=kwargs["user_id"],
                         filename=kwargs["filename"],
@@ -161,9 +163,12 @@ def _build_in_background(**kwargs) -> None:
                             kwargs["database_url"], document_id, done, total
                         ),
                         cancel=kwargs["cancel"],
+                        save_chunks=lambda texts: repository.replace_chunks(
+                            conn, kwargs["user_id"], document_id, texts
+                        ),
                     )
                 if not kwargs["cancel"].is_set():
-                    repository.mark_ready(conn, document_id)
+                    repository.mark_ready(conn, document_id, kept)
             except BuildCancelled:
                 repository.mark_build_failed(conn, document_id, "stopped")
             except Exception as exc:

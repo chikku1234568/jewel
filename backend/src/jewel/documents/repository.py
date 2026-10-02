@@ -7,7 +7,7 @@ import psycopg
 
 from jewel.documents.models import DocumentStatus
 
-_SUMMARY_COLUMNS = "id, filename, uploaded_at, status, error, build_done, build_total"
+_SUMMARY_COLUMNS = "id, filename, uploaded_at, status, error, build_done, build_total, triples_kept"
 _DETAIL_COLUMNS = f"{_SUMMARY_COLUMNS}, media_type, document_date, extracted_text"
 
 
@@ -40,7 +40,7 @@ def mark_extracting(conn: psycopg.Connection, document_id: uuid.UUID) -> None:
     conn.execute(
         """
         UPDATE documents
-        SET status = %s, error = NULL, build_done = 0, build_total = 0
+        SET status = %s, error = NULL, build_done = 0, build_total = 0, triples_kept = 0
         WHERE id = %s
         """,
         (DocumentStatus.EXTRACTING, document_id),
@@ -59,10 +59,10 @@ def set_build_progress(
     )
 
 
-def mark_ready(conn: psycopg.Connection, document_id: uuid.UUID) -> None:
+def mark_ready(conn: psycopg.Connection, document_id: uuid.UUID, triples_kept: int) -> None:
     conn.execute(
-        "UPDATE documents SET status = %s, error = NULL WHERE id = %s",
-        (DocumentStatus.READY, document_id),
+        "UPDATE documents SET status = %s, error = NULL, triples_kept = %s WHERE id = %s",
+        (DocumentStatus.READY, triples_kept, document_id),
     )
 
 
@@ -104,3 +104,25 @@ def delete_document(conn: psycopg.Connection, user_id: Any, document_id: uuid.UU
         (document_id, user_id),
     ).fetchone()
     return row["stored_path"] if row else None
+
+
+def replace_chunks(
+    conn: psycopg.Connection, user_id: Any, document_id: uuid.UUID, texts: list[str]
+) -> None:
+    """Store this build's chunks as ordinals 0..n-1, replacing any from an earlier build."""
+    with conn.transaction():
+        conn.execute(
+            "DELETE FROM document_chunks WHERE document_id = %s AND user_id = %s",
+            (document_id, user_id),
+        )
+        with conn.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT INTO document_chunks (id, document_id, user_id, ordinal, text)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                [
+                    (uuid.uuid4(), document_id, user_id, ordinal, text)
+                    for ordinal, text in enumerate(texts)
+                ],
+            )

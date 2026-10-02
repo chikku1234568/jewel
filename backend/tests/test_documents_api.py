@@ -1,8 +1,16 @@
 """Document routes against a real Postgres and a temporary upload directory."""
 
+import json
+import time
 from pathlib import Path
 
+import pytest
+
+from jewel.api.routes import documents as documents_routes
 from jewel.documents.models import DOCX_MEDIA_TYPE, MAX_UPLOAD_BYTES
+from jewel.ingestion.chunking import chunk_text
+from jewel.kg.memory_store import MemoryGraphStore
+from jewel.llm.hashing import HashingEmbedder
 from jewel.parsing.markdown import MarkItDownParser
 from tests.conftest import make_client, sign_in
 from tests.fixtures import make_docx, make_pdf, make_pptx
@@ -51,7 +59,17 @@ def test_upload_pdf_and_docx_are_parsed(client, db, settings, upload_dir) -> Non
     library = client.get("/documents").json()
     assert {d["filename"] for d in library} == {"Lease 2026.pdf", "letter.docx"}
     assert all(
-        set(d) == {"id", "filename", "uploaded_at", "status", "error", "build_done", "build_total"}
+        set(d)
+        == {
+            "id",
+            "filename",
+            "uploaded_at",
+            "status",
+            "error",
+            "build_done",
+            "build_total",
+            "triples_kept",
+        }
         for d in library
     )
     assert len(stored_files(upload_dir)) == 2
@@ -207,3 +225,88 @@ def test_user_a_cannot_see_or_delete_user_b_documents(app, db, settings, upload_
     assert bob.get(f"/documents/{bob_doc['id']}").json()["extracted_text"] == "Bob's private notes"
     assert len(stored_files(upload_dir)) == 1
     assert [d["id"] for d in bob.get("/documents").json()] == [bob_doc["id"]]
+
+
+def test_library_json_includes_triples_kept(client, db, settings) -> None:
+    sign_in(client, db, settings, "sub-a", "alice@example.com")
+    upload(client, "one.txt", b"first file")
+    [row] = client.get("/documents").json()
+    assert row["triples_kept"] == 0
+
+
+class _FakeChat:
+    """API-shaped extraction chat: one triple per passage, quoting that passage."""
+
+    model = "fake-api"
+
+    def complete(self, system: str, user: str, **_kwargs) -> str:
+        sentence = user.split(". ")[1] + "."  # a whole sentence, never cut at a chunk edge
+        subject, _, rest = sentence.partition(" holds ")
+        triple = {"subject": subject, "predicate": "holds", "object": rest, "quote": sentence}
+        return json.dumps({"entities": [], "triples": [triple]})
+
+
+@pytest.fixture
+def offline_build(app, monkeypatch: pytest.MonkeyPatch) -> MemoryGraphStore:
+    """Run the real build route and background thread with no model and no Neo4j."""
+    graph = MemoryGraphStore()
+
+    class Driver:
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(documents_routes, "make_chat", lambda choice: _FakeChat())
+    monkeypatch.setattr(documents_routes, "make_embedder", lambda choice: HashingEmbedder())
+    monkeypatch.setattr(documents_routes.GraphDatabase, "driver", lambda *a, **k: Driver())
+    monkeypatch.setattr(documents_routes, "Neo4jGraphStore", lambda driver: graph)
+    app.state.neo4j = Driver()  # the route only checks that a driver exists
+    return graph
+
+
+def _wait_for_build(client, document_id: str) -> dict:
+    for _ in range(100):
+        row = next(d for d in client.get("/documents").json() if d["id"] == document_id)
+        if row["status"] != "extracting":
+            return row
+        time.sleep(0.05)
+    raise AssertionError("build did not finish")
+
+
+def test_build_stores_chunks_and_counts_triples_kept(
+    client, db, settings, offline_build: MemoryGraphStore
+) -> None:
+    user = sign_in(client, db, settings, "sub-a", "alice@example.com")
+    text = " ".join(f"Person {i} holds key {i}." for i in range(600))  # several chunks
+    doc = upload(client, "keys.txt", text.encode(), "text/plain").json()
+
+    assert client.post(f"/documents/{doc['id']}/build").status_code == 200
+    row = _wait_for_build(client, doc["id"])
+
+    assert row["status"] == "ready", row["error"]
+    chunks = [chunk.text for chunk in chunk_text(text, size=3500, overlap=200)]
+    stored = db.execute(
+        "SELECT ordinal, text, user_id FROM document_chunks WHERE document_id = %s "
+        "ORDER BY ordinal",
+        (doc["id"],),
+    ).fetchall()
+    assert [r["text"] for r in stored] == chunks
+    assert [r["ordinal"] for r in stored] == list(range(len(chunks)))
+    assert {r["user_id"] for r in stored} == {user["id"]}
+
+    triples = offline_build.subgraph(str(user["id"])).triples
+    assert row["triples_kept"] == len(triples) == len(chunks)
+    assert all(t.quote in chunks[t.chunk_ordinal] for t in triples)
+    assert row["build_done"] == row["build_total"] == len(chunks)
+
+
+def test_delete_removes_the_stored_chunks(
+    client, db, settings, offline_build: MemoryGraphStore
+) -> None:
+    sign_in(client, db, settings, "sub-a", "alice@example.com")
+    doc = upload(client, "keys.txt", b"Intro. Sam holds the key. Outro.", "text/plain").json()
+    client.post(f"/documents/{doc['id']}/build")
+    assert _wait_for_build(client, doc["id"])["status"] == "ready"
+    assert db.execute("SELECT count(*) AS n FROM document_chunks").fetchone()["n"] == 1
+
+    assert client.delete(f"/documents/{doc['id']}").status_code == 204
+    assert db.execute("SELECT count(*) AS n FROM document_chunks").fetchone()["n"] == 0
