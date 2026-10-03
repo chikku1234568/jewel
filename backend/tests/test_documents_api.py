@@ -15,6 +15,7 @@ from jewel.documents import repository
 from jewel.documents.models import DOCX_MEDIA_TYPE, MAX_UPLOAD_BYTES
 from jewel.ingestion.chunking import build_chunks
 from jewel.kg.memory_store import MemoryGraphStore
+from jewel.llm.embedders import DEFAULT_MODEL
 from jewel.llm.hashing import HashingEmbedder
 from jewel.parsing.markdown import MarkItDownParser
 from tests.conftest import make_client, sign_in
@@ -367,7 +368,14 @@ def test_ask_keeps_its_shape_and_reads_the_stored_chunks(
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
 
     response = client.post(
-        "/ask", json={"question": "Who holds key 7?", "agent": {"api_key": "sk-test"}}
+        "/ask",
+        json={
+            "question": "Who holds key 7?",
+            # The test embedder has no model name, so the graph counts as the legacy default.
+            "model": DEFAULT_MODEL,
+            "api_key": "sk-embed",
+            "agent": {"api_key": "sk-test"},
+        },
     )
     assert response.status_code == 200, response.text
     body = response.json()

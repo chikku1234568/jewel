@@ -127,8 +127,8 @@ def test_neo4j_delete_triples_binds_the_user_and_touches_only_statements() -> No
     assert statement_params == legacy_params == {"user_id": USER, "ids": ["rel-1"]}
 
 
-def test_delete_relations_requires_sign_in() -> None:
-    response = TestClient(app).request("DELETE", "/graph/relations", json={"ids": ["rel-1"]})
+def test_delete_relations_requires_sign_in(client) -> None:
+    response = client.request("DELETE", "/graph/relations", json={"ids": ["rel-1"]})
     assert response.status_code == 401
 
 
