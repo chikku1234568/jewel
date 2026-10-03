@@ -29,5 +29,7 @@ npm-debug.log*
 
 # Local data (uploaded files live on a local volume; fixtures are committed under data/fixtures)
 data/uploads/
+backend/data/
+data/ask-retrieval.log
 *.sqlite
 *.db

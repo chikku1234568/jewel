@@ -122,6 +122,19 @@ class MemoryGraphStore:
             return None
         return document.text
 
+    def delete_triples(self, user_id: str, triple_ids: list[str]) -> int:
+        """Drop this user's relations with these ids. Mentions, entities, and other users stay."""
+        if not triple_ids:
+            return 0
+        wanted = set(triple_ids)
+        before = len(self.triples)
+        self.triples = [
+            triple
+            for triple in self.triples
+            if not (triple.user_id == user_id and triple.id in wanted)
+        ]
+        return before - len(self.triples)
+
     def delete_document(self, user_id: str, document_id: str) -> None:
         self.documents.pop((user_id, document_id), None)
         self.mentions = [

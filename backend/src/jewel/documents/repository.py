@@ -97,6 +97,15 @@ def get_document(
     ).fetchone()
 
 
+def delete_user_documents(conn: psycopg.Connection, user_id: Any) -> list[str]:
+    """Delete every document row for this user. Chunks go with the rows. Returns stored paths."""
+    rows = conn.execute(
+        "DELETE FROM documents WHERE user_id = %s RETURNING id, stored_path",
+        (user_id,),
+    ).fetchall()
+    return [row["stored_path"] for row in rows]
+
+
 def delete_document(conn: psycopg.Connection, user_id: Any, document_id: uuid.UUID) -> str | None:
     """Delete the caller's row; return its stored path, or None if not theirs."""
     row = conn.execute(

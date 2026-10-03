@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -9,6 +8,7 @@ import {
 import { Link } from 'react-router-dom'
 import {
   askQuestion,
+  deleteRelations,
   getGraph,
   type AgentChoice,
   type AskResult,
@@ -49,6 +49,10 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
   const [documentId, setDocumentId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
   const [pick, setPick] = useState<GraphPick>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [chosen, setChosen] = useState<Set<string>>(() => new Set())
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -75,16 +79,28 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
     }
   }, [refreshKey])
 
+  useEffect(() => {
+    if (!deleting) return
+    function onKey(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setDeleting(false)
+      setChosen(new Set())
+      setDeleteError(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [deleting])
+
   const drawing = useMemo(
     () => (graph && documentId ? drawingFor(graph, documentId, focusId) : null),
     [graph, documentId, focusId],
   )
+  const selectedIds = useMemo(() => {
+    if (!drawing) return []
+    const live = new Set(drawing.triples.map((triple) => triple.id))
+    return [...chosen].filter((id) => live.has(id))
+  }, [drawing, chosen])
   const counts = useMemo(() => (graph ? tripleCounts(graph) : new Map<string, number>()), [graph])
-  const onPick = useCallback((next: GraphPick) => {
-    setPick(next)
-    // Clicking an entity limits the drawing to that entity's edges.
-    if (next?.kind === 'entity') setFocusId(next.id)
-  }, [])
 
   if (error) {
     return (
@@ -116,10 +132,79 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
   const selectedId =
     pick?.kind === 'document' ? documentNodeId(drawing.documentId) : (pick?.id ?? null)
 
+  function keepChoicesFor(nextFocus: string | null) {
+    if (!graph || !documentId) return
+    const live = new Set(
+      drawingFor(graph, documentId, nextFocus).triples.map((triple) => triple.id),
+    )
+    setChosen((current) => {
+      const next = new Set([...current].filter((id) => live.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }
+
+  function onPick(next: GraphPick) {
+    setPick(next)
+    // Clicking an entity limits the drawing to that entity's edges.
+    if (next?.kind === 'entity') {
+      setFocusId(next.id)
+      keepChoicesFor(next.id)
+    }
+  }
+
   function chooseFile(id: string) {
     setDocumentId(id)
     setFocusId(null)
     setPick(null)
+    setDeleting(false)
+    setChosen(new Set())
+    setDeleteError(null)
+  }
+
+  function leaveDeleteMode() {
+    setDeleting(false)
+    setChosen(new Set())
+    setDeleteError(null)
+  }
+
+  function toggleChosen(id: string) {
+    setChosen((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function confirmDelete() {
+    if (selectedIds.length === 0 || deleteBusy) return
+    const ids = selectedIds
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await deleteRelations(ids)
+      const value = await getGraph()
+      const removed = new Set(ids)
+      setGraph(value)
+      setPick((current) =>
+        current?.kind === 'triple' && removed.has(current.id) ? null : current,
+      )
+      setFocusId((current) => {
+        if (!current || !documentId) return current
+        const still = value.triples.some(
+          (triple) =>
+            triple.document_id === documentId &&
+            (triple.source_id === current || triple.target_id === current),
+        )
+        return still ? current : null
+      })
+      setChosen(new Set())
+      setDeleting(false)
+    } catch (err) {
+      setDeleteError(message(err))
+    } finally {
+      setDeleteBusy(false)
+    }
   }
 
   return (
@@ -146,6 +231,7 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
               onClick={() => {
                 setFocusId(null)
                 setPick(null)
+                keepChoicesFor(null)
               }}
             >
               Show whole file
@@ -155,8 +241,8 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
       </div>
       <p className="graph-meta hint">
         {plural(drawing.entities.length, 'name', 'names')} ·{' '}
-        {plural(drawing.triples.length, 'statement', 'statements')} in this view. Drag to move,
-        scroll or pinch to zoom.
+        {plural(drawing.triples.length, 'statement', 'statements')} in this view. Drag a name to
+        move it. Scroll to zoom. The names stay where you leave them.
       </p>
 
       {drawing.triples.length === 0 ? (
@@ -164,29 +250,92 @@ export function GraphPanel({ refreshKey }: { refreshKey: number }) {
       ) : (
         <div className="graph-grid">
           <GraphCanvas drawing={drawing} selectedId={selectedId} onPick={onPick} />
-          <div className="graph-detail" aria-live="polite">
-            <PickDetail
-              pick={pick}
-              drawing={drawing}
-              nameOf={nameOf}
-              entityType={(id) => names.get(id)?.type ?? ''}
-            />
-            <h3 className="block-title">Statements in this view</h3>
-            <ul className="triples">
-              {drawing.triples.map((triple) => (
-                <li key={triple.id}>
+          <div className="graph-detail">
+            <div aria-live="polite">
+              <PickDetail
+                pick={pick}
+                drawing={drawing}
+                nameOf={nameOf}
+                entityType={(id) => names.get(id)?.type ?? ''}
+              />
+            </div>
+            <div className="statements-head">
+              <h3 className="block-title">Statements in this view</h3>
+              {deleting ? (
+                <div className="delete-actions">
                   <button
                     type="button"
-                    className={pickedTriple === triple.id ? 'triple-button selected' : 'triple-button'}
-                    aria-pressed={pickedTriple === triple.id}
-                    onClick={() => setPick({ kind: 'triple', id: triple.id })}
+                    className="button button-small button-quiet"
+                    onClick={leaveDeleteMode}
+                    disabled={deleteBusy}
                   >
-                    <span className="triple-end">{nameOf(triple.source_id)}</span>{' '}
-                    <span className="triple-predicate">{triple.predicate}</span>{' '}
-                    <span className="triple-end">{nameOf(triple.target_id)}</span>
+                    Cancel
                   </button>
-                </li>
-              ))}
+                  <button
+                    type="button"
+                    className="button button-small button-danger"
+                    onClick={() => void confirmDelete()}
+                    disabled={deleteBusy || selectedIds.length === 0}
+                  >
+                    {deleteBusy
+                      ? 'Deleting…'
+                      : selectedIds.length === 0
+                        ? 'Delete selected'
+                        : `Delete ${selectedIds.length} selected`}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={() => setDeleting(true)}
+                >
+                  Delete a relation(s)
+                </button>
+              )}
+            </div>
+            {deleting ? (
+              <p className="hint small delete-note">
+                Tick the statements to remove. Building this file again puts the extracted
+                statements back.
+              </p>
+            ) : null}
+            {deleteError ? (
+              <p className="error" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+            <ul className="triples">
+              {drawing.triples.map((triple) => {
+                const label = `${nameOf(triple.source_id)} ${triple.predicate} ${nameOf(triple.target_id)}`
+                return (
+                  <li key={triple.id}>
+                    {deleting ? (
+                      <label className="triple-check">
+                        <input
+                          type="checkbox"
+                          checked={chosen.has(triple.id)}
+                          disabled={deleteBusy}
+                          aria-label={`Select ${label}`}
+                          onChange={() => toggleChosen(triple.id)}
+                        />
+                      </label>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={
+                        pickedTriple === triple.id ? 'triple-button selected' : 'triple-button'
+                      }
+                      aria-pressed={pickedTriple === triple.id}
+                      onClick={() => setPick({ kind: 'triple', id: triple.id })}
+                    >
+                      <span className="triple-end">{nameOf(triple.source_id)}</span>{' '}
+                      <span className="triple-predicate">{triple.predicate}</span>{' '}
+                      <span className="triple-end">{nameOf(triple.target_id)}</span>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </div>
         </div>

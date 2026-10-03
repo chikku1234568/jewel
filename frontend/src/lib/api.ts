@@ -7,7 +7,7 @@
  *
  * Mounted today: GET /auth/google (a browser navigation, not a fetch), POST /auth/logout,
  * GET /me, POST / GET /documents, GET / DELETE /documents/{id}, the build and stop
- * routes under /documents/{id}, GET /graph, and POST /ask.
+ * routes under /documents/{id}, GET /graph, DELETE /graph/relations, and POST /ask.
  */
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -127,15 +127,20 @@ export async function deleteDocument(id: string): Promise<void> {
   await request(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
+/** Delete every file and the knowledge graph for the signed-in account. */
+export async function deleteLibrary(): Promise<void> {
+  await request('/documents', { method: 'DELETE' })
+}
+
 export interface EmbeddingChoice {
-  provider: 'local' | 'api'
+  provider: 'api'
   model: string
   base_url: string
   api_key: string
 }
 
 export interface ExtractionChoice {
-  provider: 'local' | 'api'
+  provider: 'api'
   model: string
   base_url: string
   api_key: string
@@ -153,20 +158,9 @@ export const AGENT_MODELS = [
   { id: 'gpt-4o-mini', label: 'OpenAI gpt-4o-mini', base_url: 'https://api.openai.com/v1' },
 ]
 
-export const LOCAL_EMBEDDINGS = [
-  { id: 'BAAI/bge-base-en-v1.5', label: 'BGE base — local, balanced' },
-  { id: 'BAAI/bge-large-en-v1.5', label: 'BGE large — local, stronger English' },
-  { id: 'nomic-ai/nomic-embed-text-v1.5', label: 'Nomic v1.5 — local, long passages' },
-  { id: 'intfloat/multilingual-e5-large', label: 'E5 large — local, other languages' },
-]
-
 export const API_EMBEDDINGS = [
   { id: 'text-embedding-3-small', label: 'OpenAI text-embedding-3-small' },
   { id: 'text-embedding-3-large', label: 'OpenAI text-embedding-3-large' },
-]
-
-export const LOCAL_EXTRACTION = [
-  { id: 'qwen2.5:7b-instruct', label: 'Qwen 2.5 7B — on this computer' },
 ]
 
 export const API_EXTRACTION = [
@@ -211,6 +205,16 @@ export interface GraphView {
 export async function getGraph(): Promise<GraphView> {
   const response = await request('/graph')
   return (await response.json()) as GraphView
+}
+
+/** Remove existing entity-to-entity relations. Unknown ids are skipped. */
+export async function deleteRelations(ids: string[]): Promise<{ deleted: number }> {
+  const response = await request('/graph/relations', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  return (await response.json()) as { deleted: number }
 }
 
 export interface AskResult {

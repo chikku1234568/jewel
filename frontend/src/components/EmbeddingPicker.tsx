@@ -1,8 +1,6 @@
 import {
   API_EMBEDDINGS,
   API_EXTRACTION,
-  LOCAL_EMBEDDINGS,
-  LOCAL_EXTRACTION,
   AGENT_MODELS,
   type AgentChoice,
   type EmbeddingChoice,
@@ -10,8 +8,8 @@ import {
 } from '../lib/api'
 
 const DEFAULTS: EmbeddingChoice = {
-  provider: 'local',
-  model: 'BAAI/bge-base-en-v1.5',
+  provider: 'api',
+  model: 'text-embedding-3-small',
   base_url: 'https://api.openai.com/v1',
   api_key: '',
 }
@@ -20,7 +18,10 @@ export function loadEmbeddingChoice(): EmbeddingChoice {
   try {
     const raw = sessionStorage.getItem('jewel.embedding')
     if (!raw) return DEFAULTS
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<EmbeddingChoice>) }
+    const saved = JSON.parse(raw) as Partial<EmbeddingChoice>
+    // A tab that still has a removed local model starts over on the API default.
+    if (saved.provider !== 'api') return DEFAULTS
+    return { ...DEFAULTS, ...saved, provider: 'api' }
   } catch {
     return DEFAULTS
   }
@@ -31,9 +32,9 @@ export function storeEmbeddingChoice(choice: EmbeddingChoice) {
 }
 
 const EXTRACTION_DEFAULTS: ExtractionChoice = {
-  provider: 'local',
-  model: 'qwen2.5:7b-instruct',
-  base_url: 'https://api.openai.com/v1',
+  provider: 'api',
+  model: 'kimi-k2.6',
+  base_url: 'https://api.moonshot.ai/v1',
   api_key: '',
 }
 
@@ -41,7 +42,10 @@ export function loadExtractionChoice(): ExtractionChoice {
   try {
     const raw = sessionStorage.getItem('jewel.extraction')
     if (!raw) return EXTRACTION_DEFAULTS
-    return { ...EXTRACTION_DEFAULTS, ...(JSON.parse(raw) as Partial<ExtractionChoice>) }
+    const saved = JSON.parse(raw) as Partial<ExtractionChoice>
+    // A tab that still has the removed local Qwen choice starts over on the API default.
+    if (saved.provider !== 'api') return EXTRACTION_DEFAULTS
+    return { ...EXTRACTION_DEFAULTS, ...saved, provider: 'api' }
   } catch {
     return EXTRACTION_DEFAULTS
   }
@@ -59,11 +63,10 @@ export function ExtractionPicker({
   value: ExtractionChoice
   onChange: (value: ExtractionChoice) => void
 }) {
-  const options = value.provider === 'local' ? LOCAL_EXTRACTION : API_EXTRACTION
-  const known = options.some((option) => option.id === value.model)
+  const known = API_EXTRACTION.some((option) => option.id === value.model)
 
   function update(patch: Partial<ExtractionChoice>) {
-    const next = { ...value, ...patch }
+    const next = { ...value, ...patch, provider: 'api' as const }
     storeExtractionChoice(next)
     onChange(next)
   }
@@ -71,21 +74,6 @@ export function ExtractionPicker({
   return (
     <fieldset className="embedding">
       <legend>Read the file</legend>
-      <label>
-        Where it runs
-        <select
-          value={value.provider}
-          onChange={(event) => {
-            const provider = event.target.value as ExtractionChoice['provider']
-            const model = provider === 'local' ? LOCAL_EXTRACTION[0].id : API_EXTRACTION[0].id
-            const base = API_EXTRACTION.find((option) => option.id === model)?.base_url
-            update({ provider, model, ...(base ? { base_url: base } : {}) })
-          }}
-        >
-          <option value="local">On this computer</option>
-          <option value="api">OpenAI-compatible API</option>
-        </select>
-      </label>
       <label>
         Model
         <select
@@ -100,15 +88,15 @@ export function ExtractionPicker({
             update({ model: id, ...(base ? { base_url: base } : {}) })
           }}
         >
-          {options.map((option) => (
+          {API_EXTRACTION.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
-          {value.provider === 'api' ? <option value="other">Other model id</option> : null}
+          <option value="other">Other model id</option>
         </select>
       </label>
-      {value.provider === 'api' && !known ? (
+      {!known ? (
         <label>
           Model id
           <input
@@ -118,32 +106,26 @@ export function ExtractionPicker({
           />
         </label>
       ) : null}
-      {value.provider === 'api' ? (
-        <>
-          <label>
-            Base URL
-            <input
-              value={value.base_url}
-              onChange={(event) => update({ base_url: event.target.value })}
-            />
-          </label>
-          <label>
-            API key
-            <input
-              type="password"
-              value={value.api_key}
-              autoComplete="off"
-              onChange={(event) => update({ api_key: event.target.value })}
-            />
-          </label>
-          <p className="hint">
-            This is the step that reads the PDF. An API model does that work off this laptop.
-            gpt-4o-mini uses https://api.openai.com/v1. kimi-k2.6 uses https://api.moonshot.ai/v1.
-          </p>
-        </>
-      ) : (
-        <p className="hint">Qwen runs on this computer. A long PDF will keep the machine busy.</p>
-      )}
+      <label>
+        Base URL
+        <input
+          value={value.base_url}
+          onChange={(event) => update({ base_url: event.target.value })}
+        />
+      </label>
+      <label>
+        API key
+        <input
+          type="password"
+          value={value.api_key}
+          autoComplete="off"
+          onChange={(event) => update({ api_key: event.target.value })}
+        />
+      </label>
+      <p className="hint">
+        This model reads the file and writes the triples. It needs your API key. gpt-4o-mini uses
+        https://api.openai.com/v1. kimi-k2.6 uses https://api.moonshot.ai/v1.
+      </p>
     </fieldset>
   )
 }
@@ -244,7 +226,7 @@ export function AgentPicker({
   )
 }
 
-/** Local models, or an OpenAI-compatible key and model. */
+/** An OpenAI-compatible embeddings API. The user supplies the key. */
 export function EmbeddingPicker({
   value,
   onChange,
@@ -252,11 +234,10 @@ export function EmbeddingPicker({
   value: EmbeddingChoice
   onChange: (value: EmbeddingChoice) => void
 }) {
-  const options = value.provider === 'local' ? LOCAL_EMBEDDINGS : API_EMBEDDINGS
-  const known = options.some((option) => option.id === value.model)
+  const known = API_EMBEDDINGS.some((option) => option.id === value.model)
 
   function update(patch: Partial<EmbeddingChoice>) {
-    const next = { ...value, ...patch }
+    const next = { ...value, ...patch, provider: 'api' as const }
     storeEmbeddingChoice(next)
     onChange(next)
   }
@@ -264,22 +245,6 @@ export function EmbeddingPicker({
   return (
     <fieldset className="embedding">
       <legend>Embedding model</legend>
-      <label>
-        Where it runs
-        <select
-          value={value.provider}
-          onChange={(event) => {
-            const provider = event.target.value as EmbeddingChoice['provider']
-            update({
-              provider,
-              model: provider === 'local' ? LOCAL_EMBEDDINGS[0].id : API_EMBEDDINGS[0].id,
-            })
-          }}
-        >
-          <option value="local">On this computer</option>
-          <option value="api">OpenAI-compatible API</option>
-        </select>
-      </label>
       <label>
         Model
         <select
@@ -289,15 +254,15 @@ export function EmbeddingPicker({
             else update({ model: '' })
           }}
         >
-          {options.map((option) => (
+          {API_EMBEDDINGS.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
-          {value.provider === 'api' ? <option value="other">Other model id</option> : null}
+          <option value="other">Other model id</option>
         </select>
       </label>
-      {value.provider === 'api' && !known ? (
+      {!known ? (
         <label>
           Model id
           <input
@@ -307,35 +272,26 @@ export function EmbeddingPicker({
           />
         </label>
       ) : null}
-      {value.provider === 'api' ? (
-        <>
-          <label>
-            Base URL
-            <input
-              value={value.base_url}
-              onChange={(event) => update({ base_url: event.target.value })}
-            />
-          </label>
-          <label>
-            API key
-            <input
-              type="password"
-              value={value.api_key}
-              autoComplete="off"
-              onChange={(event) => update({ api_key: event.target.value })}
-            />
-          </label>
-          <p className="hint">
-            The key is kept in this browser tab and sent only when you build or ask. A graph
-            has to be searched with the same model that built it.
-          </p>
-        </>
-      ) : (
-        <p className="hint">
-          BGE large and Nomic are stronger than BGE base. The first build with a new local model
-          downloads it. Search must use the same model the graph was built with.
-        </p>
-      )}
+      <label>
+        Base URL
+        <input
+          value={value.base_url}
+          onChange={(event) => update({ base_url: event.target.value })}
+        />
+      </label>
+      <label>
+        API key
+        <input
+          type="password"
+          value={value.api_key}
+          autoComplete="off"
+          onChange={(event) => update({ api_key: event.target.value })}
+        />
+      </label>
+      <p className="hint">
+        This model turns the file and the question into vectors. It needs your API key. A graph
+        has to be searched with the same model that built it.
+      </p>
     </fieldset>
   )
 }

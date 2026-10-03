@@ -1,6 +1,9 @@
 """The upload flow for ``POST /documents``.
 
-1. Reject a disallowed type or an over-cap file (20 MB, 50 PDF pages) before writing bytes.
+1. Reject a disallowed type, an over-cap file (20 MB, 20 PDF pages), or bytes that do not
+   match the extension, before writing anything. A PDF must carry a PDF header. An Office
+   file must be a zip package with no unsafe paths and no huge declared expansion. Text
+   and HTML must be UTF-8 without null bytes.
 2. Write bytes under ``JEWEL_UPLOAD_DIR`` at an opaque path and insert the row (``stored``).
 3. Set ``parsing`` and convert to text: Markdown via MarkItDown, or UTF-8 for ``.txt`` and
    ``.md``. The PDF page cap already ran with pypdf in step 1, before any conversion.
@@ -19,6 +22,7 @@ from typing import Any
 import psycopg
 
 from jewel.documents import repository
+from jewel.documents.inspect import UnsafeUpload, check_bytes
 from jewel.documents.models import (
     MAX_PDF_PAGES,
     MAX_UPLOAD_BYTES,
@@ -70,6 +74,10 @@ def check_upload(filename: str, data: bytes) -> str:
             pages = None  # unreadable PDF: stored, then reported as a parse failure
         if pages is not None and pages > MAX_PDF_PAGES:
             raise UploadRejected(422, f"PDF has {pages} pages; the limit is {MAX_PDF_PAGES} pages.")
+    try:
+        check_bytes(extension, data)
+    except UnsafeUpload as exc:
+        raise UploadRejected(422, exc.message) from exc
     return extension
 
 

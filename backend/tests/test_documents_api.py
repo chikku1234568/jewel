@@ -13,12 +13,13 @@ from jewel.api.routes import documents as documents_routes
 from jewel.auth.users import upsert_user
 from jewel.documents import repository
 from jewel.documents.models import DOCX_MEDIA_TYPE, MAX_UPLOAD_BYTES
-from jewel.ingestion.chunking import chunk_text
+from jewel.ingestion.chunking import build_chunks
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.hashing import HashingEmbedder
 from jewel.parsing.markdown import MarkItDownParser
 from tests.conftest import make_client, sign_in
 from tests.fixtures import make_docx, make_pdf, make_pptx
+from tests.keep_verdict import keep_all_verdict
 
 
 def upload(client, filename: str, data: bytes, content_type: str = "application/octet-stream"):
@@ -133,14 +134,12 @@ def test_pptx_and_html_are_parsed_to_markdown(client, db, settings) -> None:
     assert detail["extracted_text"].startswith("## Keys")  # stored as Markdown
 
 
-def test_corrupt_pptx_fails_but_row_and_file_remain(client, db, settings, upload_dir) -> None:
+def test_corrupt_pptx_is_rejected_and_not_stored(client, db, settings, upload_dir) -> None:
     sign_in(client, db, settings, "sub-a", "alice@example.com")
     response = upload(client, "slides.pptx", b"PK\x03\x04")
-    assert response.status_code == 201
-    assert response.json()["status"] == "failed"
-    assert response.json()["error"] == "Could not read this .pptx file"
-    assert count_rows(db) == 1
-    assert len(stored_files(upload_dir)) == 1
+    assert response.status_code == 422
+    assert count_rows(db) == 0
+    assert stored_files(upload_dir) == []
 
 
 def test_disallowed_type_is_rejected_and_not_stored(client, db, settings, upload_dir) -> None:
@@ -167,7 +166,7 @@ def test_exactly_20_mb_is_accepted(client, db, settings) -> None:
     assert response.json()["status"] == "parsed"
 
 
-def test_pdf_over_50_pages_is_rejected_and_not_stored(
+def test_pdf_over_20_pages_is_rejected_and_not_stored(
     client, db, settings, upload_dir, monkeypatch
 ) -> None:
     sign_in(client, db, settings, "sub-a", "alice@example.com")
@@ -177,16 +176,16 @@ def test_pdf_over_50_pages_is_rejected_and_not_stored(
         raise AssertionError("MarkItDown ran on an over-cap PDF")
 
     monkeypatch.setattr(MarkItDownParser, "extract_text", no_conversion)
-    response = upload(client, "long.pdf", make_pdf([f"page {i}" for i in range(51)]))
+    response = upload(client, "long.pdf", make_pdf([f"page {i}" for i in range(21)]))
     assert response.status_code == 422
-    assert "50" in response.json()["detail"]
+    assert "20" in response.json()["detail"]
     assert count_rows(db) == 0
     assert stored_files(upload_dir) == []
 
 
-def test_pdf_with_50_pages_is_accepted(client, db, settings) -> None:
+def test_pdf_with_20_pages_is_accepted(client, db, settings) -> None:
     sign_in(client, db, settings, "sub-a", "alice@example.com")
-    response = upload(client, "fifty.pdf", make_pdf([f"page {i}" for i in range(50)]))
+    response = upload(client, "twenty.pdf", make_pdf([f"page {i}" for i in range(20)]))
     assert response.json()["status"] == "parsed"
 
 
@@ -197,6 +196,19 @@ def test_second_upload_does_not_touch_the_first(client, db, settings) -> None:
     upload(client, "two.txt", b"second file")
     after = db.execute("SELECT * FROM documents WHERE id = %s", (first["id"],)).fetchone()
     assert before == after
+
+
+def test_delete_library_clears_only_that_account(app, db, settings, upload_dir) -> None:
+    alice, bob = make_client(app), make_client(app)
+    sign_in(alice, db, settings, "sub-a", "alice@example.com")
+    sign_in(bob, db, settings, "sub-b", "bob@example.com")
+    upload(alice, "alice.txt", b"Alice's notes")
+    bob_doc = upload(bob, "bob.txt", b"Bob's private notes").json()
+
+    assert alice.delete("/documents").status_code == 204
+    assert alice.get("/documents").json() == []
+    assert bob.get(f"/documents/{bob_doc['id']}").json()["extracted_text"] == "Bob's private notes"
+    assert len(stored_files(upload_dir)) == 1
 
 
 def test_delete_removes_row_and_file(client, db, settings, upload_dir) -> None:
@@ -245,6 +257,9 @@ class _FakeChat:
     model = "fake-api"
 
     def complete(self, system: str, user: str, **_kwargs) -> str:
+        verdict = keep_all_verdict(user)
+        if verdict is not None:
+            return verdict
         sentence = user.split(". ")[1] + "."  # a whole sentence, never cut at a chunk edge
         subject, _, rest = sentence.partition(" holds ")
         triple = {"subject": subject, "predicate": "holds", "object": rest, "quote": sentence}
@@ -288,7 +303,7 @@ def test_build_stores_chunks_and_counts_triples_kept(
     row = _wait_for_build(client, doc["id"])
 
     assert row["status"] == "ready", row["error"]
-    chunks = [chunk.text for chunk in chunk_text(text, size=3500, overlap=200)]
+    chunks = [chunk.text for chunk in build_chunks(text)]
     stored = db.execute(
         "SELECT ordinal, text, user_id FROM document_chunks WHERE document_id = %s "
         "ORDER BY ordinal",

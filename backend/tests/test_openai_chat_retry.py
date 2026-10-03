@@ -10,11 +10,13 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
+from jewel.ingestion.chunking import build_chunks
 from jewel.ingestion.live import build_parsed_text
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm import openai_chat
 from jewel.llm.hashing import HashingEmbedder
 from jewel.llm.openai_chat import OpenAICompatibleChat
+from tests.keep_verdict import keep_all_verdict
 
 _RAW = (
     '{"entities":[{"name":"alarm code","type":"concept"}],'
@@ -120,7 +122,7 @@ def _build(chat) -> MemoryGraphStore:
         document_id="doc",
         user_id="user",
         filename="paper.txt",
-        text=("The alarm code is 4412. " * 400),  # three passages
+        text=("The alarm code is 4412. " * 400),
         document_date=None,
         chat=chat,
         embedder=HashingEmbedder(),
@@ -142,10 +144,13 @@ def test_one_bad_passage_does_not_fail_the_file() -> None:
                 first = calls["n"] == 1
             if first:
                 raise RuntimeError("extraction request failed (500)")
-            return _RAW
+            verdict = keep_all_verdict(user)
+            return verdict if verdict is not None else _RAW
 
     assert _build(Chat()).subgraph("user").triples
-    assert calls["n"] == 3
+    passages = len(build_chunks("The alarm code is 4412. " * 400))
+    # The one passage that raises never reaches the attribution check.
+    assert calls["n"] == 2 * passages - 1
 
 
 def test_every_passage_failing_surfaces_the_error() -> None:

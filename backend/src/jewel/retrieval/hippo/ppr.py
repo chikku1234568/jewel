@@ -1,14 +1,16 @@
-"""Personalized PageRank over one user's subgraph.
+"""Personalized PageRank over one user's statements.
 
-Damping is 0.5 so the walk stays near the seeds. Passage nodes get a weak prior of
-0.05 times their similarity to the question. The walk graph is undirected: predicates
-are labels for the UI, not edge types the walk follows.
+Damping is 0.5 so the walk stays near the seed facts. A statement node connects to its
+two names. Another fact that shares a name can pick up weight even when its wording
+did not match the question. Predicates are labels, not edge types. File nodes are not
+in this graph: a whole file cannot name the next fact.
 """
 
 import networkx as nx
 
+from jewel.kg.records import GraphTriple
+
 DAMPING = 0.5
-PASSAGE_PRIOR = 0.05
 
 
 def personalized_pagerank(
@@ -43,16 +45,20 @@ def personalized_pagerank(
     return rank
 
 
-def walk_graph(
-    entity_ids: list[str], document_ids: list[str], edges: list[tuple[str, str, float]]
-) -> nx.Graph:
-    """Undirected weighted graph. ``edges`` are pairs plus a weight."""
+def statement_graph(entity_ids: list[str], triples: list[GraphTriple]) -> nx.Graph:
+    """Undirected graph: each fact node linked to the names it joins."""
     graph = nx.Graph()
     graph.add_nodes_from(entity_ids)
-    graph.add_nodes_from(document_ids)
-    for source, target, weight in edges:
-        if graph.has_edge(source, target):
-            graph[source][target]["weight"] += weight
-        else:
-            graph.add_edge(source, target, weight=weight)
+    for triple in triples:
+        graph.add_node(triple.id)
+        _link(graph, triple.id, triple.source_id)
+        if triple.target_id != triple.source_id:
+            _link(graph, triple.id, triple.target_id)
     return graph
+
+
+def _link(graph: nx.Graph, left: str, right: str) -> None:
+    if graph.has_edge(left, right):
+        graph[left][right]["weight"] += 1.0
+    else:
+        graph.add_edge(left, right, weight=1.0)

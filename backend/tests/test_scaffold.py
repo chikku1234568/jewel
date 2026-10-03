@@ -16,6 +16,7 @@ MOUNTED = {
     "/documents/{document_id}/build",
     "/documents/{document_id}/stop",
     "/graph",
+    "/graph/relations",
     "/ask",
 }
 
@@ -35,8 +36,8 @@ def test_llm_base_url_is_xai_and_model_ids_are_not_hardcoded() -> None:
 
 
 def test_graph_vocabulary() -> None:
-    assert {label.value for label in NodeLabel} == {"Document", "Entity"}
-    assert {rel.value for rel in RelationshipType} == {"MENTIONS", "RELATED_TO"}
+    assert {label.value for label in NodeLabel} == {"Document", "Entity", "Statement"}
+    assert {rel.value for rel in RelationshipType} == {"MENTIONS", "ABOUT", "RELATED_TO"}
 
 
 def test_document_status_values() -> None:

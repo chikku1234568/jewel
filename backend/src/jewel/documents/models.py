@@ -18,7 +18,7 @@ from pydantic import BaseModel
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 """20 MB per file. Over-cap uploads are rejected and not stored."""
 
-MAX_PDF_PAGES = 50
+MAX_PDF_PAGES = 20
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"

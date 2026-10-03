@@ -81,6 +81,10 @@ a {
   padding-inline: clamp(1rem, 4vw, 2.5rem);
 }
 
+.shell-wide {
+  max-width: 110rem;
+}
+
 .wordmark {
   font-family: var(--serif);
   font-size: 1.5rem;
@@ -211,6 +215,17 @@ button.button-primary:disabled:hover {
   min-height: 2.25rem;
   padding: 0.35rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.button-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+.button-danger:hover {
+  background: #8e1d17;
+  border-color: #8e1d17;
 }
 
 /* Form fields */
@@ -553,6 +568,12 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.library-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .block > .block-title {
   margin-bottom: 0.5rem;
 }
@@ -839,25 +860,55 @@ textarea:focus {
 
 .graph-grid {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: clamp(2rem, 4vw, 3.5rem);
-  align-items: start;
+  grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 0.75fr);
+  gap: clamp(1rem, 2vw, 1.75rem);
+  align-items: stretch;
+}
+
+.graph-stage {
+  position: relative;
+  min-width: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  background:
+    radial-gradient(900px 420px at 50% -10%, #ffffff 0%, transparent 62%),
+    linear-gradient(180deg, #f7f6f3 0%, #e7efec 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 22px 50px rgba(29, 28, 26, 0.08);
 }
 
 /* Cytoscape draws into this box; it needs an explicit height. */
 .graph-canvas {
-  height: clamp(22rem, 62vh, 40rem);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--surface);
+  height: clamp(36rem, 76vh, 58rem);
+  background: transparent;
   touch-action: none; /* let Cytoscape handle drag and pinch instead of the page */
+}
+
+.graph-zoom {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.graph-zoom .button {
+  min-width: 2.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 18px rgba(29, 28, 26, 0.08);
 }
 
 .triple-button {
   display: block;
-  width: 100%;
+  width: auto;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
-  padding: 0.6rem 0.5rem;
+  padding: 0.7rem 0.55rem;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
@@ -879,8 +930,37 @@ textarea:focus {
 }
 
 .graph-detail {
-  border-left: 1px solid var(--rule);
-  padding-left: clamp(1.5rem, 3vw, 2.5rem);
+  min-width: 0;
+  padding: 1.15rem 1.15rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(29, 28, 26, 0.05);
+  max-height: clamp(36rem, 76vh, 58rem);
+  overflow: auto;
+}
+
+.statements-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.statements-head .block-title {
+  margin: 0;
+}
+
+.delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.delete-note {
+  margin: 0 0 0.75rem;
 }
 
 .entity {
@@ -923,8 +1003,25 @@ textarea:focus {
 }
 
 .triples li {
+  display: flex;
+  align-items: stretch;
+  gap: 0.2rem;
   border-bottom: 1px solid var(--rule);
   font-size: 0.9375rem;
+}
+
+.triple-check {
+  display: flex;
+  align-items: center;
+  padding: 0 0.15rem 0 0.2rem;
+}
+
+.triple-check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--danger);
 }
 
 .triple-end {
@@ -1023,14 +1120,11 @@ textarea:focus {
   }
 
   .graph-detail {
-    border-left: 0;
-    padding-left: 0;
-    border-top: 1px solid var(--rule);
-    padding-top: 1.75rem;
+    max-height: none;
   }
 
   .graph-canvas {
-    height: clamp(18rem, 55vh, 28rem);
+    height: clamp(24rem, 68vh, 40rem);
   }
 
   .area-side {

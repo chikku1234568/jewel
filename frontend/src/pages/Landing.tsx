@@ -106,8 +106,7 @@ export function Landing() {
               </span>
               <h3>Upload files</h3>
               <p>
-                Add your own PDF, text, Markdown or Word files. Shorter PDFs, about 20 pages, work
-                best.
+                Add your own PDF, text, Markdown or Word files. A PDF can be at most 20 pages.
               </p>
             </li>
             <li className="step">

@@ -3,12 +3,14 @@ session user, never a client-supplied field.
 
 * ``POST /documents``: multipart upload of one ``.pdf``, ``.docx``, ``.pptx``, ``.xlsx``,
   ``.html``, ``.htm``, ``.txt`` or ``.md`` file. Disallowed types (415), files over 20 MB
-  (413) and PDFs over 50 pages (422) are rejected before anything is stored. Otherwise
-  the file is stored, converted to Markdown text, and the row is returned with status
+  (413), PDFs over 20 pages, and bytes that do not match the extension (422) are rejected
+  before anything is stored. Otherwise the file is stored, converted to Markdown text,
+  and the row is returned with status
   ``parsed`` or ``failed`` (with ``error``).
 * ``GET /documents``: the caller's library (id, filename, uploaded_at, status, error,
   build progress, and ``triples_kept`` from the last finished build).
 * ``GET /documents/{id}``: the row with extracted text for the owner; 404 otherwise.
+* ``DELETE /documents``: delete every file, chunk row, and graph node for this account.
 * ``DELETE /documents/{id}``: delete the row, its stored chunks and the file for the owner,
   and the document's part of the graph when Neo4j is up; 404 otherwise.
 * ``POST /documents/{id}/build``: store this file's chunks, extract triples from them in
@@ -207,6 +209,35 @@ def get_one(document_id: str, user: CurrentUser, conn: DbConn) -> DocumentDetail
     if row is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return DocumentDetail.model_validate(row)
+
+
+def _stop_builds(document_ids: list[str]) -> None:
+    """Ask any of these builds to stop. A call already on the wire can still finish."""
+    with _CANCELS_LOCK:
+        running = [_CANCELS.get(document_id) for document_id in document_ids]
+    for entry in running:
+        if entry is None:
+            continue
+        cancel, chat = entry
+        cancel.set()
+        abort = getattr(chat, "abort", None)
+        if abort is not None:
+            abort()
+
+
+@router.delete("", status_code=204)
+def delete_library(
+    request: Request, user: CurrentUser, conn: DbConn, settings: AppSettings
+) -> Response:
+    """Delete this account's files and knowledge graph. Other accounts are untouched."""
+    rows = repository.list_documents(conn, user["id"])
+    _stop_builds([str(row["id"]) for row in rows])
+    for stored_path in repository.delete_user_documents(conn, user["id"]):
+        FileStore(settings.upload_dir).delete(stored_path)
+    driver = getattr(request.app.state, "neo4j", None)
+    if driver is not None:
+        Neo4jGraphStore(driver).delete_user(str(user["id"]))
+    return Response(status_code=204)
 
 
 @router.delete("/{document_id}", status_code=204)

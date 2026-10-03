@@ -6,11 +6,12 @@ import re
 import threading
 import time
 
-from jewel.ingestion.chunking import chunk_text
+from jewel.ingestion.chunking import build_chunks
 from jewel.ingestion.live import build_parsed_text
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.kg.neo4j_store import Neo4jGraphStore
 from jewel.llm.hashing import HashingEmbedder
+from tests.keep_verdict import keep_all_verdict
 
 USER = "user-a"
 _FACT = re.compile(r"Item (\d+) is stored in bay (\d+)\.")
@@ -31,6 +32,9 @@ class ShuffledApiChat:
         self._lock = threading.Lock()
 
     def complete(self, system: str, user: str, **_kwargs) -> str:
+        verdict = keep_all_verdict(user)
+        if verdict is not None:
+            return verdict
         with self._lock:
             delay = self._random.uniform(0, 0.02)
         time.sleep(delay)
@@ -62,7 +66,7 @@ def test_parallel_workers_keep_the_chunk_ordinal_pairing() -> None:
         store=store,
         save_chunks=saved.append,
     )
-    chunks = [chunk.text for chunk in chunk_text(text, size=3500, overlap=200)]
+    chunks = [chunk.text for chunk in build_chunks(text)]
     assert saved == [chunks]  # stored once, in ordinal order, before extraction
     triples = store.subgraph(USER).triples
     assert kept == len(triples) > 0
@@ -79,6 +83,9 @@ def test_chunks_are_saved_before_the_first_model_call() -> None:
 
         def complete(self, system: str, user: str) -> str:
             events.append("model")
+            verdict = keep_all_verdict(user)
+            if verdict is not None:
+                return verdict
             return (
                 '{"entities":[],"triples":[{"subject":"a","predicate":"b","object":"c",'
                 '"quote":"a b c"}]}'
@@ -95,7 +102,7 @@ def test_chunks_are_saved_before_the_first_model_call() -> None:
         store=MemoryGraphStore(),
         save_chunks=lambda texts: events.append("save"),
     )
-    assert events == ["save", "model"]
+    assert events == ["save", "model", "model"]
 
 
 class _Session:

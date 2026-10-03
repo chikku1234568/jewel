@@ -41,6 +41,7 @@ export function Workspace() {
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState<string | null>(null)
   const [graphKey, setGraphKey] = useState(0)
+  const [askKey, setAskKey] = useState(0)
   const [embedding, setEmbedding] = useState(loadEmbeddingChoice)
   const [extraction, setExtraction] = useState(loadExtractionChoice)
   const [agent, setAgent] = useState(loadAgentChoice)
@@ -136,7 +137,7 @@ export function Workspace() {
         ) : null}
       </header>
 
-      <main className="shell workspace-main">
+      <main className={area === 'graph' ? 'shell shell-wide workspace-main' : 'shell workspace-main'}>
         <section className="area" aria-labelledby="documents-title" hidden={area !== 'documents'}>
           <div className="area-head">
             <h1 id="documents-title">Documents</h1>
@@ -152,6 +153,7 @@ export function Workspace() {
                 embedding={embedding}
                 extraction={extraction}
                 onBuilt={() => setGraphKey((value) => value + 1)}
+                onCleared={() => setAskKey((value) => value + 1)}
               />
             </div>
             <aside className="area-side" aria-labelledby="build-settings-title">
@@ -170,6 +172,7 @@ export function Workspace() {
             <p className="lede">
               One file at a time: the names found in it and the statements that connect them.
               Click a name to see only its edges, or a line to read the sentence it comes from.
+              You can remove a statement from the list on the right.
             </p>
           </div>
           <GraphPanel refreshKey={graphKey} />
@@ -185,7 +188,7 @@ export function Workspace() {
           </div>
           <div className="area-grid">
             <div className="area-main">
-              <AskPanel embedding={embedding} agent={agent} />
+              <AskPanel key={askKey} embedding={embedding} agent={agent} />
             </div>
             <aside className="area-side" aria-labelledby="answer-settings-title">
               <h2 id="answer-settings-title" className="side-title">

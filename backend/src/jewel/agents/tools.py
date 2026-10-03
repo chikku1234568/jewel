@@ -42,11 +42,11 @@ def read_document(
 ) -> list[str]:
     """Return up to three source chunks of a document this run's search returned.
 
-    The chunks chosen are the ones the search's kept triples came from, most triples
-    first. A graph built before chunk ordinals were stored has none; then the document
-    text is re-chunked exactly as the build chunked it, and the chunks that contain the
-    kept quotes are returned, most quotes first. There is no similarity search here:
-    only chunks the graph walk already pointed at are opened.
+    The chunks chosen are the ones the returned facts came from, most facts first. Those
+    facts are the similarity hits plus facts the walk added. A graph built before chunk
+    ordinals were stored has none; then the document text is re-chunked exactly as the
+    build chunked it, and the chunks that contain the kept quotes are returned, most
+    quotes first. There is no second similarity search here.
     """
     if document_id not in allowed_document_ids:
         raise ToolError("that document was not returned by search")

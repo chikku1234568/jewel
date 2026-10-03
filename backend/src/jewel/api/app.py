@@ -34,6 +34,7 @@ from jewel import __version__
 from jewel.api.routes import ask, auth, documents, graph, health
 from jewel.config import Settings, get_settings
 from jewel.db.postgres import apply_schema, connect
+from jewel.kg.neo4j_schema import ensure_schema
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ def _neo4j_driver(settings: Settings):
             auth=(settings.neo4j_user, settings.neo4j_password),
         )
         driver.verify_connectivity()
+        ensure_schema(driver)
         return driver
     except Exception:
         logger.exception("Neo4j is not reachable")

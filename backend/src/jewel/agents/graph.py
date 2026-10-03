@@ -26,20 +26,27 @@ from jewel.agents.state import AgentResult, KeptTriple, ToolTraceEntry
 from jewel.agents.tools import ChunkSource, ToolError, read_document, search_graph
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.base import EmbeddingModel
+from jewel.retrieval.ask_log import log_event
 
-MAX_TOOL_CALLS = 4
+# One search and one read per part of a compound question, plus a retry, then it must stop.
+MAX_TOOL_CALLS = 12
 
 SYSTEM_PROMPT = (
     "You answer questions about a user's own documents. Use the tools; do not answer from "
-    "memory. Call search_graph first. It returns the matching files with their ids and the "
-    "quoted sentences behind the facts it found. If you need more context, call "
-    "read_document with a document id that search_graph returned; it returns up to three "
-    "source passages of that file. Call one tool at a time, at most "
-    f"{MAX_TOOL_CALLS} in total. Answer with quotes copied from the observations, name the "
-    "file each quote comes from, and say so plainly when the documents do not answer the "
-    "question. Do not invent facts."
+    "memory. A question may have several parts. For every part that no quote has answered "
+    "yet, call search_graph with a query for that part alone. It returns matching files, "
+    "their ids, and the quoted sentences behind the facts it found. If a part is still "
+    "missing, call search_graph again with a narrower query. read_document opens at most "
+    "three passages of a file search_graph already returned, and only passages that "
+    "contain those facts. It does not search the rest of the file. A missing part needs "
+    "another search_graph, not another read. A filename is not a fact. Call one tool at "
+    f"a time, up to {MAX_TOOL_CALLS} calls. Keep going until every part is answered by a "
+    "quote or those calls are used up, and only then answer. Copy quotes from the "
+    "observations, name the file each quote comes from, and for any part still missing "
+    "say plainly that the documents do not answer it. Do not invent facts."
 )
 FORCE_ANSWER = " You have used all your tool calls. Answer now from what the tools returned."
+_BUDGET_SPENT = "The tool budget is spent. Answer from the observations already returned."
 
 
 class RunContext:
@@ -69,9 +76,15 @@ class RunContext:
 # ``runtime`` is injected by LangGraph and left out of the schema the model sees.
 @tool("search_graph")
 def search_graph_tool(query: str, runtime: ToolRuntime[RunContext]) -> str:
-    """Search the user's knowledge graph. Returns files (filename and id) and quotes."""
+    """Search the graph for one part of the question.
+
+    Returns filenames, document ids, and quotes. Call again with a narrower query when a
+    part is still unanswered. A filename is not a fact.
+    """
     context = runtime.context
     result = context.result
+    if _over_budget(result):
+        return _BUDGET_SPENT
     found = search_graph(context.store, context.embedder, result.user_id, query, result.as_of)
     context.allowed.update(hit.document_id for hit in found.documents)
     result.returned_document_ids = sorted(context.allowed)
@@ -81,8 +94,8 @@ def search_graph_tool(query: str, runtime: ToolRuntime[RunContext]) -> str:
             result.kept_triples.append(kept)
     result.highlight_entity_ids = found.entity_ids
     result.highlight_relationship_ids = found.relationship_ids
-    docs = ", ".join(f"{hit.filename} id={hit.document_id}" for hit in found.documents[:8])
-    quotes = " | ".join(triple.quote for triple in found.triples[:8])
+    docs = ", ".join(f"{hit.filename} id={hit.document_id}" for hit in found.documents)
+    quotes = " | ".join(triple.quote for triple in found.triples)
     summary = f"documents: {docs}. quotes: {quotes}"
     _trace(result, "search_graph", {"query": query}, summary)
     return summary
@@ -90,9 +103,15 @@ def search_graph_tool(query: str, runtime: ToolRuntime[RunContext]) -> str:
 
 @tool("read_document")
 def read_document_tool(document_id: str, runtime: ToolRuntime[RunContext]) -> str:
-    """Open up to three source passages of a document id that search_graph returned."""
+    """Open up to three passages that contain facts search_graph already returned.
+
+    This does not search the rest of the file. A part with no quote needs another
+    search_graph call.
+    """
     context = runtime.context
     result = context.result
+    if _over_budget(result):
+        return _BUDGET_SPENT
     try:
         chunks = read_document(
             context.store,
@@ -106,6 +125,7 @@ def read_document_tool(document_id: str, runtime: ToolRuntime[RunContext]) -> st
         _trace(result, "read_document", {"document_id": document_id}, str(exc))
         return str(exc)
     summary = f"opened {len(chunks)} {'passage' if len(chunks) == 1 else 'passages'}"
+    log_event({"event": "read", "document_id": document_id, "passages": len(chunks)})
     _trace(result, "read_document", {"document_id": document_id}, summary)
     # The model sees the whole chunk text: no slicing, or it cannot check a quote.
     return _passages_observation(document_id, chunks)
@@ -148,6 +168,7 @@ def run_agent(
     ``stored_chunks`` reads this user's stored build chunks; it is bound by the caller.
     """
     result = AgentResult(question=question, user_id=user_id, as_of=as_of)
+    log_event({"event": "ask", "question": question}, truncate=True)
     agent = create_agent(
         model,
         tools=[search_graph_tool, read_document_tool],
@@ -161,6 +182,15 @@ def run_agent(
     result.answer = final.text if isinstance(final, AIMessage) else ""
     result.tool_calls_used = len(result.tool_trace)
     return result
+
+
+def _over_budget(result: AgentResult) -> bool:
+    """True once this run has already finished ``MAX_TOOL_CALLS`` tool calls.
+
+    ``ToolBudget`` removes the tools before this can run. The check stays here so a
+    search or a read still does no work if a call arrives after that.
+    """
+    return len(result.tool_trace) >= MAX_TOOL_CALLS
 
 
 def _trace(result: AgentResult, name: str, arguments: dict, summary: str) -> None:

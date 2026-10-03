@@ -13,7 +13,7 @@ import json
 import threading
 from typing import Protocol
 
-from jewel.llm.ollama import _EXTRACT_SYSTEM, EXTRACT_OPTIONS
+from jewel.llm.extract import _EXTRACT_SYSTEM, _VERIFY_SYSTEM, EXTRACT_OPTIONS, VERIFY_MAX_TOKENS
 
 
 class ExtractionCache(Protocol):
@@ -29,6 +29,26 @@ def extraction_key(model: str, text: str) -> str:
             _field("model", model),
             _field("system", _EXTRACT_SYSTEM),
             _field("options", json.dumps(EXTRACT_OPTIONS, sort_keys=True, separators=(",", ":"))),
+            _field("text", text),
+        )
+    )
+    return hashlib.sha256(payload).hexdigest()
+
+
+def verification_key(model: str, text: str) -> str:
+    """Stable id for one attribution check. A different prompt or triple list misses."""
+    payload = b"".join(
+        (
+            _field("model", model),
+            _field("system", _VERIFY_SYSTEM),
+            _field(
+                "options",
+                json.dumps(
+                    {"max_tokens": VERIFY_MAX_TOKENS, **EXTRACT_OPTIONS},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ),
             _field("text", text),
         )
     )

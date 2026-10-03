@@ -6,8 +6,8 @@ from jewel.ingestion.extraction_cache import MemoryExtractionCache, extraction_k
 from jewel.ingestion.live import BuildCancelled, build_parsed_text
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.hashing import HashingEmbedder
-from jewel.llm.ollama import OllamaChat
 from jewel.llm.openai_chat import OpenAICompatibleChat, _body
+from tests.keep_verdict import keep_all_verdict
 
 PASSAGE = "The alarm code is 4412."
 _RAW = (
@@ -43,6 +43,9 @@ def test_second_build_of_the_same_passage_does_not_call_the_model() -> None:
 
         def complete(self, system: str, user: str) -> str:
             calls["n"] += 1
+            verdict = keep_all_verdict(user)
+            if verdict is not None:
+                return verdict
             return _RAW
 
     cache = MemoryExtractionCache()
@@ -58,8 +61,8 @@ def test_second_build_of_the_same_passage_does_not_call_the_model() -> None:
             store=MemoryGraphStore(),
             cache=cache,
         )
-    assert calls["n"] == 1
-    assert len(cache.rows) == 1
+    assert calls["n"] == 2
+    assert len(cache.rows) == 2
 
 
 def _max_in_flight(chat_base: type, needed: int, wait: float) -> int:
@@ -79,6 +82,7 @@ def _max_in_flight(chat_base: type, needed: int, wait: float) -> int:
             pass
 
         def complete(self, system: str, user: str, **_kwargs) -> str:
+            verdict = keep_all_verdict(user)
             with lock:
                 state["inside"] += 1
                 state["max_inside"] = max(state["max_inside"], state["inside"])
@@ -87,9 +91,9 @@ def _max_in_flight(chat_base: type, needed: int, wait: float) -> int:
             enough.wait(timeout=wait)
             with lock:
                 state["inside"] -= 1
-            return _RAW
+            return verdict if verdict is not None else _RAW
 
-    text = (PASSAGE + " ") * 2200  # about 16 passages of 3500 characters
+    text = (PASSAGE + " ") * 2200  # many passages, so eight calls can be in flight together
     build_parsed_text(
         document_id="doc",
         user_id="user",
@@ -105,11 +109,6 @@ def _max_in_flight(chat_base: type, needed: int, wait: float) -> int:
 
 def test_eight_api_calls_are_in_flight_together() -> None:
     assert _max_in_flight(OpenAICompatibleChat, needed=8, wait=5) == 8
-
-
-def test_ollama_runs_one_passage_at_a_time() -> None:
-    # With one worker needed=2 is never met, so each call waits out a short timeout.
-    assert _max_in_flight(OllamaChat, needed=2, wait=0.05) == 1
 
 
 def test_stop_cancels_the_remaining_passages() -> None:

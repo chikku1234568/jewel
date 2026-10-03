@@ -1,4 +1,4 @@
-"""Build one parsed document with the local model and the local embedder."""
+"""Build one parsed document: the user's extraction API, then the chosen embedder."""
 
 import threading
 from collections.abc import Callable
@@ -6,20 +6,27 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 
 from jewel.ingestion.chunking import build_chunks
-from jewel.ingestion.extraction_cache import ExtractionCache, extraction_key
+from jewel.ingestion.extraction_cache import ExtractionCache, extraction_key, verification_key
 from jewel.ingestion.pipeline import ParsedDocument, build_document
 from jewel.kg.extraction import (
     Extraction,
     ExtractionError,
+    checked_triples,
     merge_extractions,
     parse_extraction,
+    uncovered_sentences,
 )
 from jewel.llm.base import ChatModel, EmbeddingModel
-from jewel.llm.ollama import OllamaChat, extract_document
+from jewel.llm.extract import (
+    extract_document,
+    recovery_user_text,
+    verification_user_text,
+    verify_triples,
+)
 
-# Passages of one file sent to an API host at the same time. Bounded on purpose: wider
-# mostly buys HTTP 429s, which the client then waits out (llm/openai_chat.py). Ollama
-# runs one passage at a time on this machine. _BUILD_LOCK still builds one file at a time.
+# Passages of one file sent to the user's extraction API at the same time. Bounded on
+# purpose: wider mostly buys HTTP 429s, which the client then waits out
+# (llm/openai_chat.py). _BUILD_LOCK still builds one file at a time.
 _API_WORKERS = 8
 
 
@@ -58,6 +65,8 @@ def build_parsed_text(
     extraction = merge_extractions(parts)
     if not extraction.triples:
         raise ExtractionError("no triples could be read from this document")
+    if cancel is not None and cancel.is_set():
+        raise BuildCancelled()
     build_document(
         ParsedDocument(
             id=document_id,
@@ -74,7 +83,7 @@ def build_parsed_text(
 
 
 def _extract_chunks(chat, model, chunks, cache, on_progress, cancel) -> list[Extraction]:
-    """Run passage calls together. Local Ollama stays one at a time.
+    """Run up to eight passage calls at once.
 
     Futures finish in any order, so each one returns its chunk's ordinal together with
     the extraction, and every kept triple is stamped with that ordinal. The parts are
@@ -83,7 +92,7 @@ def _extract_chunks(chat, model, chunks, cache, on_progress, cancel) -> list[Ext
     """
     if cancel is not None and cancel.is_set():
         raise BuildCancelled()
-    workers = 1 if isinstance(chat, OllamaChat) else _API_WORKERS
+    workers = _API_WORKERS
     parts: list[tuple[int, Extraction]] = []
     done = 0
     last_error: Exception | None = None
@@ -92,7 +101,34 @@ def _extract_chunks(chat, model, chunks, cache, on_progress, cancel) -> list[Ext
         if cancel is not None and cancel.is_set():
             raise BuildCancelled()
         raw = _extract_passage(chat, model, chunk.text, cache)
-        return ordinal, _with_ordinal(parse_extraction(raw, chunk.text), ordinal)
+        try:
+            extraction = parse_extraction(raw, chunk.text)
+            failed: ExtractionError | None = None
+        except ExtractionError as exc:
+            extraction = Extraction(entities=[], triples=[])
+            failed = exc
+        # One follow-up, inside this worker, for names and figures the first reply missed.
+        # Quotes are checked against the whole chunk. Stop skips the second call.
+        if cancel is None or not cancel.is_set():
+            missing = uncovered_sentences(chunk.text, extraction)
+            if missing:
+                follow = _extract_passage(chat, model, recovery_user_text(missing), cache)
+                try:
+                    extra = parse_extraction(follow, chunk.text)
+                except ExtractionError:
+                    extra = None
+                if extra is not None and (extra.triples or extra.entities):
+                    extraction = merge_extractions([extraction, extra])
+                    failed = None
+        if failed is not None and not extraction.triples:
+            raise failed
+        # One attribution check for this passage. A triple stays only when the reply
+        # clearly says the quote states that relation. Stop skips the call.
+        if extraction.triples and (cancel is None or not cancel.is_set()):
+            request = verification_user_text(extraction.triples)
+            verdict = _verify_passage(chat, model, request, cache)
+            extraction = checked_triples(extraction, verdict)
+        return ordinal, _with_ordinal(extraction, ordinal)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(run_one, ordinal, chunk) for ordinal, chunk in enumerate(chunks)]
@@ -126,6 +162,18 @@ def _with_ordinal(extraction: Extraction, ordinal: int) -> Extraction:
         triple.model_copy(update={"chunk_ordinal": ordinal}) for triple in extraction.triples
     ]
     return Extraction(entities=extraction.entities, triples=triples)
+
+
+def _verify_passage(chat: ChatModel, model: str, text: str, cache: ExtractionCache | None) -> str:
+    key = verification_key(model, text)
+    if cache is not None:
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+    raw = verify_triples(chat, text)
+    if cache is not None:
+        cache.put(key, model, raw)
+    return raw
 
 
 def _extract_passage(chat: ChatModel, model: str, text: str, cache: ExtractionCache | None) -> str:

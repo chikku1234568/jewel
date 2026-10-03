@@ -15,14 +15,14 @@ graph.
 
 1. **Sign in.** Google OAuth (authorization-code flow, scopes `openid email profile`).
    The API keeps a server-side session and gives the browser an `httpOnly` cookie.
-2. **Upload.** The API checks the file (type, 20 MB cap, 50-page cap for PDFs), stores
-   the bytes, extracts the text in the same request, and saves the text in Postgres.
+2. **Upload.** The API checks the file (type, 20 MB cap, 20-page cap for PDFs), stores
+   the bytes, extracts the text in the same request, and saves the text in Postgres. A PDF over 20 pages is rejected and not stored.
 3. **Build.** On request, one file at a time: the text is split into passages, a chat
    model extracts entities and `subject - predicate - object` triples with a verbatim
    quote, an embedding model embeds the document, entities and facts, and the result is
-   written to Neo4j under your user id. The extraction model is either a local Qwen 2.5 7B
-   served by Ollama or any OpenAI-compatible chat API. The embedding model is either a
-   local model (fastembed) or an OpenAI-compatible embeddings API. Model output for each
+   written to Neo4j under your user id. The extraction model is an OpenAI-compatible chat
+   API, and the build request must include your API key. The embedding model is an
+   OpenAI-compatible embeddings API, and that request must include your API key too. Model output for each
    passage is cached in Postgres, so rebuilding the same text with the same model does not
    call the model again. The build runs in the background; the page shows progress and can
    stop it.
@@ -49,7 +49,7 @@ choices, including typed keys, in `sessionStorage` for the current tab.
 | Graph | Neo4j 5 Community (`neo4j:5.26-community`), official Python driver |
 | Retrieval | Embedding similarity plus Personalized PageRank over a networkx graph, in the API process |
 | Parsing | MarkItDown to Markdown (PDF text layer only, no OCR; .docx, .pptx, .xlsx, .html), pypdf page count, UTF-8 text |
-| Models | Ollama (local Qwen 2.5 7B) or OpenAI-compatible chat APIs; fastembed (local BGE, Nomic, E5) or OpenAI-compatible embeddings; Kimi by default for answers |
+| Models | OpenAI-compatible APIs for extraction, embeddings, and answers. The user supplies the key. |
 | CI | GitHub Actions: ruff and pytest against Postgres; oxlint, typecheck and build for the frontend |
 
 ## Repository map
@@ -65,7 +65,7 @@ backend/src/jewel/
   kg/             Extraction parsing, graph records, Neo4j and in-memory stores
   retrieval/hippo Linking, time filter and Personalized PageRank
   agents/         The LangGraph tool-calling agent (create_agent) and its chat adapter
-  llm/            Ollama, OpenAI-compatible chat, embedders, per-request model choices
+  llm/            OpenAI-compatible chat, embedders, per-request model choices
 backend/tests/    pytest suite (database tests need a throwaway Postgres)
 frontend/src/     Landing page, signed-in workspace (Documents, Graph, Ask), API client
 infra/            docker-compose for local Postgres and Neo4j (plus dev-only app containers)
@@ -76,8 +76,7 @@ data/fixtures/    Description of the two-document test fixture
 ## Local development
 
 Requirements: [uv](https://docs.astral.sh/uv/), Node.js 20.19 or later, Docker, and a
-Google account. [Ollama](https://ollama.com/) is optional; you need it only to build with
-the local extraction model.
+Google account. Building a file needs an API key for the extraction model, typed in the app.
 
 ### 1. Google OAuth client
 
@@ -116,16 +115,7 @@ docker compose -f infra/docker-compose.yml --env-file .env up -d postgres neo4j
 Postgres listens on 5432 and Neo4j on 7687 (Neo4j Browser on 7474). The API creates its
 Postgres tables at startup.
 
-### 4. Optional: local extraction model
-
-```bash
-ollama pull qwen2.5:7b-instruct   # Ollama must listen on http://127.0.0.1:11434
-```
-
-Local embedding models are downloaded by fastembed the first time they are used, so the
-first build or question with a given model is slower.
-
-### 5. API
+### 4. API
 
 ```bash
 cd backend
@@ -134,9 +124,11 @@ uv run --env-file ../.env uvicorn jewel.api.app:app --reload   # http://localhos
 ```
 
 `--env-file ../.env` matters: the settings class only looks for `.env` in the current
-directory, and `KIMI_API_KEY` and `OLLAMA_URL` are read from the process environment.
+directory, and `KIMI_API_KEY` is read from the process environment. It is the fallback
+for the answer model only, when that request carries no key. Extraction always uses the
+key typed in the app.
 
-### 6. Frontend
+### 5. Frontend
 
 ```bash
 cd frontend
@@ -150,8 +142,8 @@ time (Vite reads it from the shell or from `frontend/.env*`, not from the reposi
 
 `make help` lists shortcuts (`make test`, `make lint`, `make typecheck`, `make build`).
 `make up` starts every compose service, but the backend and frontend containers are
-development placeholders: the backend container is not given `KIMI_API_KEY` or an
-`OLLAMA_URL` that reaches Ollama, and the frontend container runs the Vite dev server.
+development placeholders: the backend container is not given `KIMI_API_KEY`, and the
+frontend container runs the Vite dev server.
 Running the API and frontend on the host, as above, is the supported path.
 
 ## Configuration
@@ -170,8 +162,7 @@ Values live in `.env` (never commit it). Names come from `.env.example`,
 | `DATABASE_URL` | API | Postgres connection string. |
 | `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | API | Neo4j connection. Without a password, build, graph and ask return 503. |
 | `JEWEL_UPLOAD_DIR` | API | Directory for uploaded file bytes (default `./data/uploads`). |
-| `KIMI_API_KEY` | API | Server-side key for the answer model, used when the request carries no key. |
-| `OLLAMA_URL` | API | Ollama base URL (default `http://127.0.0.1:11434`). |
+| `KIMI_API_KEY` | API | Server-side key for the answer model, used when that request carries no key. Extraction does not use it. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | docker-compose | Credentials for the local Postgres container. |
 | `VITE_API_BASE_URL` | frontend build | API base URL compiled into the frontend (default `http://localhost:8000`). |
 | `JEWEL_TEST_DATABASE_URL` | tests | Throwaway Postgres for the database tests. |
@@ -197,7 +188,7 @@ npm run lint && npm run typecheck && npm run build
 The database tests apply the schema and then **truncate** the `users`, `sessions`,
 `oauth_states` and `documents` tables. Point `JEWEL_TEST_DATABASE_URL` only at a database
 you can wipe. Without it the database tests are skipped locally; in CI (when `CI` is set)
-they fail instead of skipping. No test calls Google, Neo4j, Ollama, Kimi or any other
+they fail instead of skipping. No test calls Google, Neo4j, Kimi or any other
 model API.
 
 ## Documentation

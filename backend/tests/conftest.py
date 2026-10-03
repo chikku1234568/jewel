@@ -4,7 +4,7 @@ Database tests need a real Postgres. Point ``JEWEL_TEST_DATABASE_URL`` at a thro
 database (the tests truncate its tables). Without it the database tests are skipped
 locally, but they FAIL when ``CI`` is set, so CI can never pass by skipping them.
 
-No test calls Google, Neo4j, Ollama, Kimi or xAI, and no test reads a ``.env`` file.
+No test calls Google, Neo4j, Kimi or xAI, and no test reads a ``.env`` file.
 """
 
 import os
@@ -20,6 +20,9 @@ from jewel.auth.sessions import SESSION_COOKIE, create_session
 from jewel.auth.users import upsert_user
 from jewel.config import Settings, get_settings
 from jewel.db.postgres import apply_schema, connect
+
+# A local API logs Ask searches unless this is set. Tests leave it off.
+os.environ["JEWEL_ASK_LOG"] = ""
 
 TEST_DB_ENV = "JEWEL_TEST_DATABASE_URL"
 

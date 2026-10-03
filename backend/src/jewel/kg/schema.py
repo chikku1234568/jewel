@@ -1,12 +1,13 @@
-"""Graph vocabulary: two node labels and two relationship types.
+"""Graph vocabulary.
 
-* ``Document``: one uploaded file (raw text, filename, times, status, embedding). The
-  passage node.
-* ``Entity``: a phrase node (``name``, ``type``, ``embedding``).
-* ``MENTIONS``: Entity -> Document, with ``quote``, offsets, ``valid_at``.
-* ``RELATED_TO``: Entity -> Entity, with ``predicate`` (a property, not a relationship
-  type), ``quote``, offsets, ``document_id``, ``valid_at``, ``invalid_at``, and
-  ``chunk_ordinal`` (the stored build chunk the quote came from; absent on older edges).
+* ``Document``: the file record (raw text, filename, embedding). PageRank does not score it.
+* ``Entity``: a name (``name``, ``type``, ``embedding`` of the name). The bridge between facts.
+* ``Statement``: one extracted fact. PageRank scores these nodes. The fact string
+  ``subject predicate object`` is the embedding. ``quote`` is the file sentence.
+* ``MENTIONS``: Entity -> Document. Which file contains a name. Not a walk edge.
+* ``ABOUT``: Statement -> Entity, ``role`` ``subject`` or ``object``.
+* ``RELATED_TO``: Entity -> Entity on graphs built before statement nodes. Still loaded
+  and still deletable. A rebuild of that file replaces it with statement nodes.
 
 Every node and relationship carries ``user_id``.
 """
@@ -17,10 +18,12 @@ from enum import StrEnum
 class NodeLabel(StrEnum):
     DOCUMENT = "Document"
     ENTITY = "Entity"
+    STATEMENT = "Statement"
 
 
 class RelationshipType(StrEnum):
     MENTIONS = "MENTIONS"
+    ABOUT = "ABOUT"
     RELATED_TO = "RELATED_TO"
 
 

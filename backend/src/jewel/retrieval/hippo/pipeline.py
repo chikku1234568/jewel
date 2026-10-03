@@ -12,11 +12,15 @@ from jewel.kg.memory_store import MemoryGraphStore
 from jewel.kg.records import GraphDocument, GraphTriple
 from jewel.kg.temporal import is_valid_at
 from jewel.llm.base import ChatModel, EmbeddingModel
+from jewel.retrieval.ask_log import log_event
 from jewel.retrieval.hippo.linking import cosine, top_matches
-from jewel.retrieval.hippo.ppr import PASSAGE_PRIOR, personalized_pagerank, walk_graph
+from jewel.retrieval.hippo.ppr import personalized_pagerank, statement_graph
 from jewel.retrieval.hippo.recognition import filter_triples
 
 _TOP_K = 8
+# Facts the walk adds beyond the similarity hits. A name with many facts does not
+# empty the whole neighborhood into the prompt.
+_EXTRA_K = 8
 
 
 @dataclass(frozen=True)
@@ -52,11 +56,6 @@ def retrieve(
         for triple in subgraph.triples
         if is_valid_at(triple.valid_at, triple.invalid_at, as_of)
     ]
-    mentions = [
-        mention
-        for mention in subgraph.mentions
-        if is_valid_at(mention.valid_at, mention.invalid_at, as_of)
-    ]
     ranked = top_matches(
         query_vector,
         [(triple.id, triple.embedding) for triple in triples],
@@ -67,39 +66,81 @@ def retrieve(
     if chat is not None:
         chosen = filter_triples(query, chosen, chat)
     if not chosen:
+        log_event({"event": "search", "query": query, "fallback": "documents", "facts": []})
         return _dense_fallback(subgraph.documents, query_vector)
-    frequency: dict[str, set[str]] = {}
-    for mention in mentions:
-        frequency.setdefault(mention.entity_id, set()).add(mention.document_id)
-    seed_sum: dict[str, float] = {}
-    seed_count: dict[str, int] = {}
-    for triple in chosen:
-        score = max(cosine(query_vector, triple.embedding), 0.0)
-        for entity_id in (triple.source_id, triple.target_id):
-            denom = max(len(frequency.get(entity_id, ())), 1)
-            seed_sum[entity_id] = seed_sum.get(entity_id, 0.0) + score / denom
-            seed_count[entity_id] = seed_count.get(entity_id, 0) + 1
-    seeds = {entity_id: seed_sum[entity_id] / seed_count[entity_id] for entity_id in seed_sum}
-    entity_ids = [entity.id for entity in subgraph.entities]
-    document_ids = [document.id for document in subgraph.documents]
-    edges: list[tuple[str, str, float]] = [
-        (triple.source_id, triple.target_id, 1.0) for triple in triples
-    ]
-    edges.extend((mention.entity_id, mention.document_id, 1.0) for mention in mentions)
-    graph = walk_graph(entity_ids, document_ids, edges)
-    personalization = dict(seeds)
-    for document in subgraph.documents:
-        personalization[document.id] = PASSAGE_PRIOR * max(
-            cosine(query_vector, document.embedding), 0.0
-        )
+    seed_ids = {triple.id for triple in chosen}
+    personalization = {
+        triple.id: max(cosine(query_vector, triple.embedding), 0.0) for triple in chosen
+    }
+    graph = statement_graph([entity.id for entity in subgraph.entities], triples)
     scores = personalized_pagerank(graph, personalization)
-    documents = _rank_documents(subgraph.documents, scores)
+    extras = [
+        triple
+        for triple in triples
+        if triple.id not in seed_ids and scores.get(triple.id, 0.0) > 0.0
+    ]
+    extras.sort(key=lambda triple: scores[triple.id], reverse=True)
+    kept_extras = extras[:_EXTRA_K]
+    returned = [*chosen, *kept_extras]
+    documents = _rank_documents(subgraph.documents, returned, scores)
+    similarity = dict(ranked)
+    for triple in kept_extras:
+        if triple.embedding:
+            similarity[triple.id] = cosine(query_vector, triple.embedding)
+    _log_search(query, subgraph.documents, chosen, kept_extras, extras, scores, similarity)
     return RetrievalResult(
         documents=documents,
-        triples=chosen,
-        entity_ids=list(seeds),
-        relationship_ids=[triple.id for triple in chosen],
+        triples=returned,
+        entity_ids=_seed_entities(chosen),
+        relationship_ids=[triple.id for triple in returned],
     )
+
+
+def _log_search(
+    query: str,
+    documents: list[GraphDocument],
+    seeds: list[GraphTriple],
+    extras: list[GraphTriple],
+    candidates: list[GraphTriple],
+    scores: dict[str, float],
+    similarity: dict[str, float],
+) -> None:
+    """Record which returned facts were similarity hits and which the walk added."""
+    filenames = {document.id: document.filename for document in documents}
+    seed_entities = set(_seed_entities(seeds))
+
+    def row(triple: GraphTriple, role: str) -> dict:
+        ends = {triple.source_id, triple.target_id}
+        return {
+            "role": role,
+            "predicate": triple.predicate,
+            "file": filenames.get(triple.document_id, triple.document_id),
+            "chunk": triple.chunk_ordinal,
+            "similarity": round(similarity.get(triple.id, 0.0), 4),
+            "ppr": round(scores.get(triple.id, 0.0), 6),
+            "shares_seed_entity": bool(ends & seed_entities),
+        }
+
+    log_event(
+        {
+            "event": "search",
+            "query": query,
+            "seed_count": len(seeds),
+            "extra_candidates": len(candidates),
+            "extras_kept": len(extras),
+            "facts": [row(triple, "seed") for triple in seeds]
+            + [row(triple, "extra") for triple in extras],
+        }
+    )
+
+
+def _seed_entities(triples: list[GraphTriple]) -> list[str]:
+    seen: list[str] = []
+    for triple in triples:
+        for entity_id in (triple.source_id, triple.target_id):
+            if entity_id not in seen:
+                seen.append(entity_id)
+    return seen
 
 
 def _dense_fallback(documents: list[GraphDocument], query_vector: list[float]) -> RetrievalResult:
@@ -116,12 +157,20 @@ def _dense_fallback(documents: list[GraphDocument], query_vector: list[float]) -
 
 
 def _rank_documents(
-    documents: list[GraphDocument], scores: dict[str, float]
+    documents: list[GraphDocument],
+    triples: list[GraphTriple],
+    scores: dict[str, float],
 ) -> list[RankedDocument]:
+    """Files that own a returned fact, highest total fact-weight first."""
+    totals: dict[str, float] = {}
+    for triple in triples:
+        weight = scores.get(triple.id, 0.0)
+        totals[triple.document_id] = totals.get(triple.document_id, 0.0) + weight
+    by_id = {document.id: document for document in documents}
     ranked = [
-        RankedDocument(document.id, document.filename, document.text, scores.get(document.id, 0.0))
-        for document in documents
-        if scores.get(document.id, 0.0) > 0
+        RankedDocument(document_id, by_id[document_id].filename, by_id[document_id].text, score)
+        for document_id, score in totals.items()
+        if document_id in by_id and score > 0.0
     ]
     ranked.sort(key=lambda item: item.score, reverse=True)
     return ranked

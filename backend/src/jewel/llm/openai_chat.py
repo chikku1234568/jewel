@@ -19,7 +19,7 @@ import urllib.request
 from urllib.error import HTTPError, URLError
 
 DEFAULT_MAX_TOKENS = 1024
-"""Output cap for Kimi calls unless the caller asks for more (extraction asks for 4096)."""
+"""Output cap for Kimi calls unless the caller asks for more (extraction asks for 8192)."""
 
 _CONNECTION_ATTEMPTS = 3
 _RATE_LIMIT_RETRIES = 5

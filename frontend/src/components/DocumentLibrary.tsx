@@ -3,6 +3,7 @@ import {
   ACCEPTED_FILE_TYPES,
   buildDocument,
   deleteDocument,
+  deleteLibrary,
   stopBuild,
   getDocument,
   listDocuments,
@@ -41,10 +42,12 @@ export function DocumentLibrary({
   embedding,
   extraction,
   onBuilt,
+  onCleared,
 }: {
   embedding: EmbeddingChoice
   extraction: ExtractionChoice
   onBuilt?: () => void
+  onCleared?: () => void
 }) {
   const [documents, setDocuments] = useState<DocumentSummary[] | null>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -142,8 +145,29 @@ export function DocumentLibrary({
     }
   }
 
+  async function onReset() {
+    if (
+      !window.confirm(
+        'Delete every uploaded file and the knowledge graph for this account? Signing out does not do this. This cannot be undone.',
+      )
+    ) {
+      return
+    }
+    setError(null)
+    try {
+      await deleteLibrary()
+      setOpened(null)
+      onCleared?.()
+    } catch (err) {
+      setError(message(err))
+    } finally {
+      await refresh()
+      onBuiltRef.current?.()
+    }
+  }
+
   async function onDelete(doc: DocumentSummary) {
-    if (!window.confirm(`Delete ${doc.filename}?`)) return
+    if (!window.confirm(`Delete ${doc.filename} and its part of the graph?`)) return
     setError(null)
     try {
       await deleteDocument(doc.id)
@@ -152,6 +176,7 @@ export function DocumentLibrary({
       setError(message(err))
     } finally {
       await refresh()
+      onBuiltRef.current?.()
     }
   }
 
@@ -162,8 +187,7 @@ export function DocumentLibrary({
           Add a file
         </h2>
         <p className="hint">
-          Keep PDFs to about 20 pages. A longer file still uploads, but the graph build is slow and
-          less reliable.
+          PDFs are limited to 20 pages. A longer file is rejected and not stored.
         </p>
         <form className="upload" onSubmit={onUpload}>
           <label className="file-pick">
@@ -186,7 +210,7 @@ export function DocumentLibrary({
         </form>
         <p className="hint small">
           PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), HTML, text or Markdown, up to 20
-          MB. PDFs over 50 pages are rejected. Scanned PDFs without a text layer cannot be read.
+          MB. PDFs over 20 pages are rejected. Scanned PDFs without a text layer cannot be read.
         </p>
       </section>
 
@@ -202,9 +226,14 @@ export function DocumentLibrary({
             Library
           </h2>
           {documents && documents.length > 0 ? (
-            <span className="hint small">
-              {documents.length} {documents.length === 1 ? 'file' : 'files'}
-            </span>
+            <div className="library-tools">
+              <span className="hint small">
+                {documents.length} {documents.length === 1 ? 'file' : 'files'}
+              </span>
+              <button type="button" className="button button-small" onClick={() => void onReset()}>
+                Delete graph and files
+              </button>
+            </div>
           ) : null}
         </div>
         {documents === null ? (

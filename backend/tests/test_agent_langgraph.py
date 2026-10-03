@@ -8,7 +8,14 @@ from datetime import datetime
 import pytest
 
 from jewel.agents.chat_model import ToolCallingChat, assistant_message
-from jewel.agents.graph import MAX_TOOL_CALLS, run_agent
+from jewel.agents.graph import (
+    _BUDGET_SPENT,
+    MAX_TOOL_CALLS,
+    _over_budget,
+    run_agent,
+    search_graph_tool,
+)
+from jewel.agents.state import AgentResult, ToolTraceEntry
 from jewel.ingestion.live import build_parsed_text
 from jewel.kg.memory_store import MemoryGraphStore
 from jewel.llm.hashing import HashingEmbedder
@@ -118,7 +125,7 @@ def test_kimi_tool_calls_round_trip_through_create_agent(
     assert all(headers["Authorization"] == f"Bearer {KEY}" for headers in host.headers)
 
 
-def test_after_four_calls_the_host_is_asked_with_no_tools(
+def test_after_the_tool_cap_the_host_is_asked_with_no_tools(
     monkeypatch: pytest.MonkeyPatch, store: MemoryGraphStore
 ) -> None:
     searches = [
@@ -131,6 +138,30 @@ def test_after_four_calls_the_host_is_asked_with_no_tools(
     assert all("tools" in body for body in host.bodies[:-1])
     assert "tools" not in host.bodies[-1]
     assert "Answer now" in host.bodies[-1]["messages"][0]["content"]
+
+
+def test_a_search_does_no_work_once_the_code_cap_is_spent(store: MemoryGraphStore) -> None:
+    result = AgentResult(
+        question="Where is item 42 stored?",
+        user_id=USER,
+        as_of=datetime(2026, 4, 1),
+    )
+    assert _over_budget(result) is False
+    result.tool_trace = [
+        ToolTraceEntry("search_graph", {"query": "item 42"}, "already ran")
+        for _ in range(MAX_TOOL_CALLS)
+    ]
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.context = type("Context", (), {})()
+            self.context.result = result
+            self.context.store = store
+
+    answer = search_graph_tool.func("item 42", Runtime())
+    assert answer == _BUDGET_SPENT
+    assert len(result.tool_trace) == MAX_TOOL_CALLS
+    assert result.returned_document_ids == []
 
 
 def test_unparseable_tool_arguments_are_not_run() -> None:

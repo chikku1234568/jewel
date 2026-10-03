@@ -1,37 +1,149 @@
 """Turn a request body into an embedder. The API key stays on this object only."""
 
-from fastapi import HTTPException
-from pydantic import BaseModel, Field
+import ipaddress
+import re
+from urllib.parse import urlparse
 
-from jewel.llm.embedders import DEFAULT_MODEL, LOCAL_MODELS, LocalEmbedder, OpenAIEmbedder
-from jewel.llm.ollama import OllamaChat
+from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from jewel.llm.embedders import DEFAULT_MODEL, OpenAIEmbedder
 from jewel.llm.openai_chat import OpenAICompatibleChat
 
-LOCAL_EXTRACTION_MODELS = ("qwen2.5:7b-instruct",)
+_MODEL_NAME = re.compile(r"^[A-Za-z0-9._:/-]{1,80}$")
+_PUBLIC_HOST = "API base URL must be https and a public host."
+
+
+def clean_model_name(value: str) -> str:
+    """A model id, with no spaces or header characters."""
+    value = value.strip()
+    if not _MODEL_NAME.fullmatch(value):
+        raise ValueError("Model id must be 1 to 80 letters, digits, or . _ : / -")
+    return value
+
+
+def clean_api_key(value: str) -> str:
+    """The bearer token. Empty is allowed; a newline would be injected into the header."""
+    value = value.strip()
+    if len(value) > 400 or any(ord(char) < 33 or ord(char) == 127 for char in value):
+        raise ValueError("API key must be a single token of at most 400 characters.")
+    return value
+
+
+def clean_api_base(value: str) -> str:
+    """https URL with a public host. The server fetches this URL with the caller's key."""
+    value = value.strip().rstrip("/")
+    if len(value) > 200:
+        raise ValueError("API base URL is too long.")
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if (
+        parsed.scheme != "https"
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError(_PUBLIC_HOST)
+    if host in {"localhost", "localhost.localdomain"} or host.endswith((".local", ".internal")):
+        raise ValueError(_PUBLIC_HOST)
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError(_PUBLIC_HOST)
+    return value
 
 
 class AgentChoice(BaseModel):
     """Who writes the answer. Empty api_key uses KIMI_API_KEY on the server."""
 
+    model_config = ConfigDict(extra="forbid")
+
     model: str = "kimi-k2.6"
     base_url: str = "https://api.moonshot.ai/v1"
     api_key: str = Field(default="", repr=False)
 
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str) -> str:
+        return clean_model_name(value)
+
+    @field_validator("base_url")
+    @classmethod
+    def _base(cls, value: str) -> str:
+        return clean_api_base(value)
+
+    @field_validator("api_key")
+    @classmethod
+    def _key(cls, value: str) -> str:
+        return clean_api_key(value)
+
 
 class ExtractionChoice(BaseModel):
-    """Who reads the file and writes triples. Separate from the embedding model."""
+    """Who reads the file and writes triples. The user supplies the API key."""
 
-    provider: str = "local"
-    model: str = "qwen2.5:7b-instruct"
-    base_url: str = "https://api.openai.com/v1"
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = "api"
+    model: str = "kimi-k2.6"
+    base_url: str = "https://api.moonshot.ai/v1"
     api_key: str = Field(default="", repr=False)
+
+    @field_validator("provider")
+    @classmethod
+    def _provider(cls, value: str) -> str:
+        if value != "api":
+            raise ValueError("Extraction needs an API provider.")
+        return value
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str) -> str:
+        return clean_model_name(value)
+
+    @field_validator("base_url")
+    @classmethod
+    def _base(cls, value: str) -> str:
+        return clean_api_base(value)
+
+    @field_validator("api_key")
+    @classmethod
+    def _key(cls, value: str) -> str:
+        return clean_api_key(value)
 
 
 class EmbeddingChoice(BaseModel):
-    provider: str = "local"
-    model: str = DEFAULT_MODEL
+    """Who embeds the file and the question. The user supplies the API key."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = "api"
+    model: str = "text-embedding-3-small"
     base_url: str = "https://api.openai.com/v1"
     api_key: str = Field(default="", repr=False)
+
+    @field_validator("provider")
+    @classmethod
+    def _provider(cls, value: str) -> str:
+        if value != "api":
+            raise ValueError("Embedding needs an API provider.")
+        return value
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str) -> str:
+        return clean_model_name(value)
+
+    @field_validator("base_url")
+    @classmethod
+    def _base(cls, value: str) -> str:
+        return clean_api_base(value)
+
+    @field_validator("api_key")
+    @classmethod
+    def _key(cls, value: str) -> str:
+        return clean_api_key(value)
 
 
 def make_agent_chat(choice: AgentChoice):
@@ -47,11 +159,12 @@ def make_agent_chat(choice: AgentChoice):
 
 
 def make_chat(choice: ExtractionChoice):
-    """Local Ollama model, or an OpenAI-compatible chat call."""
+    """OpenAI-compatible chat for extraction. The request must carry the user's key."""
     if choice.provider == "local":
-        if choice.model not in LOCAL_EXTRACTION_MODELS:
-            raise HTTPException(status_code=400, detail="Unknown local extraction model")
-        return OllamaChat(model=choice.model)
+        raise HTTPException(
+            status_code=400,
+            detail="Extraction needs an API key. A local model is not available.",
+        )
     if choice.provider != "api":
         raise HTTPException(status_code=400, detail="Unknown extraction provider")
     if not choice.api_key.strip():
@@ -64,11 +177,12 @@ def make_chat(choice: ExtractionChoice):
 
 
 def make_embedder(choice: EmbeddingChoice):
-    """Local fastembed model, or an OpenAI-compatible embeddings call."""
+    """OpenAI-compatible embeddings. The request must carry the user's key."""
     if choice.provider == "local":
-        if choice.model not in LOCAL_MODELS:
-            raise HTTPException(status_code=400, detail="Unknown local embedding model")
-        return LocalEmbedder(choice.model)
+        raise HTTPException(
+            status_code=400,
+            detail="Embedding needs an API key. A local model is not available.",
+        )
     if choice.provider != "api":
         raise HTTPException(status_code=400, detail="Unknown embedding provider")
     if not choice.api_key.strip():
