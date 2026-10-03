@@ -93,9 +93,7 @@ def ask(body: AskBody, request: Request, user: CurrentUser, conn: DbConn) -> Ask
     return AskResponse(
         answer=result.answer,
         tool_calls_used=result.tool_calls_used,
-        trace=[
-            AskTraceStep(name=entry.name, summary=entry.summary) for entry in result.tool_trace
-        ],
+        trace=[AskTraceStep(name=entry.name, summary=entry.summary) for entry in result.tool_trace],
         highlight_entity_ids=result.highlight_entity_ids,
         highlight_relationship_ids=result.highlight_relationship_ids,
     )
