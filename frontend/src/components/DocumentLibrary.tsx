@@ -37,6 +37,18 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
 }
 
+function chosenLabel(chosen: File[]): string {
+  if (chosen.length === 0) return 'No file chosen'
+  if (chosen.length === 1) return chosen[0].name
+  return `${chosen.length} files: ${chosen.map((item) => item.name).join(', ')}`
+}
+
+function uploadLabel(uploading: boolean, count: number, uploadedCount: number): string {
+  if (!uploading) return count > 1 ? `Upload ${count} files` : 'Upload'
+  if (count > 1) return `Uploading ${uploadedCount + 1} of ${count}…`
+  return 'Uploading…'
+}
+
 /** The signed-in user's library: upload, list with status, build and stop, open, delete. */
 export function DocumentLibrary({
   embedding,
@@ -50,8 +62,9 @@ export function DocumentLibrary({
   onCleared?: () => void
 }) {
   const [documents, setDocuments] = useState<DocumentSummary[] | null>(null)
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadedCount, setUploadedCount] = useState(0)
   const [buildingId, setBuildingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<DocumentDetail | null>(null)
@@ -95,15 +108,23 @@ export function DocumentLibrary({
 
   async function onUpload(event: FormEvent) {
     event.preventDefault()
-    if (!file) return
+    if (files.length === 0) return
     setUploading(true)
+    setUploadedCount(0)
     setError(null)
+    const failures: string[] = []
     try {
-      await uploadDocument(file)
-      setFile(null)
+      for (const [index, item] of files.entries()) {
+        setUploadedCount(index)
+        try {
+          await uploadDocument(item)
+        } catch (err) {
+          failures.push(`${item.name}: ${message(err)}`)
+        }
+      }
+      setFiles([])
       if (inputRef.current) inputRef.current.value = ''
-    } catch (err) {
-      setError(message(err))
+      if (failures.length > 0) setError(failures.join(' '))
     } finally {
       setUploading(false)
       await refresh()
@@ -184,10 +205,12 @@ export function DocumentLibrary({
     <div className="library-area">
       <section className="block" aria-labelledby="upload-title">
         <h2 id="upload-title" className="block-title">
-          Add a file
+          Add files
         </h2>
         <p className="hint">
-          PDFs are limited to 20 pages. A longer file is rejected and not stored.
+          Choose one file or several. PDF, Word, PowerPoint, Excel, HTML, text, and Markdown
+          all join the same graph. A question can cross-reference a name that appears in more
+          than one of them.
         </p>
         <form className="upload" onSubmit={onUpload}>
           <label className="file-pick">
@@ -195,17 +218,22 @@ export function DocumentLibrary({
               ref={inputRef}
               className="visually-hidden"
               type="file"
+              multiple
               accept={ACCEPTED_FILE_TYPES}
-              aria-label="Choose a file"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              aria-label="Choose files"
+              onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
             />
             <span className="button" aria-hidden="true">
-              Choose file
+              Choose files
             </span>
-            <span className="file-name">{file ? file.name : 'No file chosen'}</span>
+            <span className="file-name">{chosenLabel(files)}</span>
           </label>
-          <button type="submit" className="button button-primary" disabled={!file || uploading}>
-            {uploading ? 'Uploading…' : 'Upload'}
+          <button
+            type="submit"
+            className="button button-primary"
+            disabled={files.length === 0 || uploading}
+          >
+            {uploadLabel(uploading, files.length, uploadedCount)}
           </button>
         </form>
         <p className="hint small">
@@ -240,7 +268,8 @@ export function DocumentLibrary({
           <p className="hint">Loading your library…</p>
         ) : documents.length === 0 ? (
           <p className="empty">
-            Your library is empty. Upload a PDF, Office, HTML, text or Markdown file to get started.
+            Your library is empty. Add a PDF, Word, PowerPoint, Excel, HTML, text, or Markdown
+            file. You can add more than one.
           </p>
         ) : (
           <table className="library">

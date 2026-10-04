@@ -16,7 +16,7 @@ GitHub Flow, one long-lived branch.
 - The change comes back through a pull request into `main`. CI must be green. Then it is merged, and the branch is deleted.
 - There is no `develop` branch and no release branch. A second long-lived branch would make the laptop, GitHub, and the VM disagree about which commit is real.
 - Do not force-push `main`.
-- A production fix uses the same path: branch from `main`, pull request, green CI, merge, then deploy that commit. The VM is updated by hand with `git pull` and Compose. Record the short commit id after each deploy.
+- A production fix uses the same path: branch from `main`, pull request, green CI, merge. The Deploy workflow then checks out that commit on the VM and runs Compose. `infra/prod.env` stays on the VM and is never committed. A dry run of the same workflow only prints the commit id and `docker compose ps`. A green CI run on `main` deploys by itself only when the repository variable `JEWEL_AUTO_DEPLOY` is `true`.
 
 ## Consequences
 
