@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import RedirectResponse
 
 from jewel.auth import google
+from jewel.auth.allowlist import email_is_allowed
 from jewel.auth.dependencies import CurrentUser, SessionCookie
 from jewel.auth.sessions import (
     SessionConfigError,
@@ -72,6 +73,9 @@ def finish_google_sign_in(
     except google.GoogleAuthError as exc:
         logger.info("Google sign-in rejected: %s", exc)
         return _frontend_redirect(settings, "token_invalid")
+    if not email_is_allowed(settings, identity.email):
+        logger.info("Google sign-in refused for an address that is not on the allowlist")
+        return _frontend_redirect(settings, "not_allowed")
 
     user = upsert_user(conn, identity.sub, identity.email, identity.name)
     try:

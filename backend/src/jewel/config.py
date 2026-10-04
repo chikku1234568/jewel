@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     frontend_url: str = Field(
         default="http://localhost:5173", validation_alias="JEWEL_FRONTEND_URL"
     )
+    # Comma-separated addresses that may sign in. Empty on a local run allows any
+    # verified Google account. Empty anywhere else allows none.
+    allowed_emails: str = Field(default="", validation_alias="JEWEL_ALLOWED_EMAILS")
 
     # Server-side sessions and encryption of user API keys at rest.
     session_secret: str = Field(default="", validation_alias="SESSION_SECRET")

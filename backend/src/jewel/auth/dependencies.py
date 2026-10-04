@@ -4,7 +4,8 @@ from typing import Annotated, Any
 
 from fastapi import Cookie, Depends, HTTPException
 
-from jewel.auth.sessions import SESSION_COOKIE, get_session_user
+from jewel.auth.allowlist import email_is_allowed
+from jewel.auth.sessions import SESSION_COOKIE, delete_session, get_session_user
 from jewel.db.postgres import AppSettings, DbConn
 
 SessionCookie = Annotated[str | None, Cookie(alias=SESSION_COOKIE)]
@@ -18,6 +19,9 @@ def current_user(
         raise HTTPException(status_code=401, detail="Not signed in")
     user = get_session_user(conn, session_token, settings.session_secret)
     if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    if not email_is_allowed(settings, user["email"]):
+        delete_session(conn, session_token, settings.session_secret)
         raise HTTPException(status_code=401, detail="Not signed in")
     return user
 
