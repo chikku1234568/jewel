@@ -107,7 +107,9 @@ export function Landing() {
               </span>
               <h3>Upload files</h3>
               <p>
-                Add your own PDF, text, Markdown or Word files. A PDF can be at most 20 pages.
+                Add more than one file. PDF, Word, PowerPoint, Excel, HTML, text, and Markdown
+                are accepted. A question can cross-reference a name that appears in more than one
+                of them. A PDF can be at most 20 pages and 20 MB.
               </p>
             </li>
             <li className="step">

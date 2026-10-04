@@ -142,7 +142,9 @@ export function Workspace() {
           <div className="area-head">
             <h1 id="documents-title">Documents</h1>
             <p className="lede">
-              Upload a file, then build it into your graph. Each build uses the models under Build
+              Upload more than one file, then build each one into the same graph. Ask can
+              cross-reference a name that appears in more than one of them. PDF, Word, PowerPoint,
+              Excel, HTML, text, and Markdown are accepted. Each build uses the models under Build
               settings.
             </p>
           </div>
@@ -170,9 +172,10 @@ export function Workspace() {
           <div className="area-head">
             <h1 id="graph-title">Graph</h1>
             <p className="lede">
-              One file at a time: the names found in it and the statements that connect them.
-              Click a name to see only its edges, or a line to read the sentence it comes from.
-              You can remove a statement from the list on the right.
+              The drawing shows one file at a time: the names found in it and the statements that
+              connect them. Ask searches every file you have built. Click a name to see only its
+              edges, or a line to read the sentence it comes from. You can remove a statement from
+              the list on the right.
             </p>
           </div>
           <GraphPanel refreshKey={graphKey} />
@@ -182,8 +185,8 @@ export function Workspace() {
           <div className="area-head">
             <h1 id="ask-title">Ask</h1>
             <p className="lede">
-              Ask one question at a time. The agent searches your graph, shows each step, then
-              answers with quotes from your files.
+              Ask one question at a time. The agent searches every file you have built, can
+              cross-reference a shared name, shows each step, then answers with quotes.
             </p>
           </div>
           <div className="area-grid">

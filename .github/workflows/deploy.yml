@@ -1,0 +1,112 @@
+name: Deploy
+
+# CI is the workflow named CI. This job only logs into the VM.
+# Run it by hand first. apply=false prints the commit and container status.
+# apply=true checks out that commit and recreates the containers.
+# A green CI run on main deploys only when the repository variable
+# JEWEL_AUTO_DEPLOY is the string true. Leave it unset until a dry run has passed.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Check out this commit and recreate the containers
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jewel-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH to the VM
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      JEWEL_HOST: ubuntu@150.230.131.57
+    steps:
+      - name: Choose the commit
+        id: plan
+        env:
+          AUTO: ${{ vars.JEWEL_AUTO_DEPLOY }}
+          EVENT_NAME: ${{ github.event_name }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          DISPATCH_SHA: ${{ github.sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$APPLY_INPUT" = "true" ]; then
+              apply=true
+            else
+              apply=false
+            fi
+            sha="$DISPATCH_SHA"
+          else
+            if [ "$AUTO" = "true" ]; then
+              apply=true
+            else
+              apply=false
+            fi
+            sha="$RUN_SHA"
+          fi
+          printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "Refusing a commit id that is not 40 hex characters." >&2
+            exit 1
+          }
+          echo "apply=$apply" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploy apply=$apply sha=$sha"
+
+      - name: Install the SSH key
+        env:
+          SSH_KEY: ${{ secrets.JEWEL_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.JEWEL_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SSH_KEY" ] || [ -z "$KNOWN_HOSTS" ]; then
+            echo "The VM SSH secret is missing." >&2
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jewel_actions
+          chmod 600 ~/.ssh/jewel_actions
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Show what the VM is running
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/jewel_actions -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$JEWEL_HOST" \
+            "set -euo pipefail; cd \"\$HOME/jewel\"; git rev-parse HEAD; docker compose -f infra/docker-compose.prod.yml --env-file infra/prod.env ps"
+
+      - name: Check out the commit and recreate containers
+        if: steps.plan.outputs.apply == 'true'
+        env:
+          SHA: ${{ steps.plan.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/jewel_actions -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$JEWEL_HOST" "bash -s" -- "$SHA" <<'EOF'
+          set -euo pipefail
+          sha="$1"
+          cd "$HOME/jewel"
+          git fetch origin
+          git cat-file -e "${sha}^{commit}"
+          git checkout --detach "$sha"
+          test -s infra/prod.env
+          docker compose -f infra/docker-compose.prod.yml --env-file infra/prod.env up -d --build
+          docker compose -f infra/docker-compose.prod.yml --env-file infra/prod.env ps
+          EOF
