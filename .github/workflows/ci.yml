@@ -1,9 +1,11 @@
 name: CI
 
+# ADR 0015. main is the deploy branch. CI runs on main and on pull requests into main.
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read

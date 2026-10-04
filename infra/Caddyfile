@@ -1,0 +1,33 @@
+# Public site. SITE_ADDRESS is the hostname only, for example tryjewel.dev.
+# Caddy obtains the certificate. /api is stripped before the request reaches the API.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+	request_body {
+		max_size 20MB
+	}
+
+	handle_path /api/* {
+		reverse_proxy api:8000 {
+			transport http {
+				response_header_timeout 15m
+				read_timeout 15m
+				write_timeout 15m
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

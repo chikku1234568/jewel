@@ -1,0 +1,41 @@
+%% name: 06-ask-on-the-vm
+%% One Ask, from the page to the answer, on the one-VM deploy.
+%% The browser holds this HTTP request open until the final JSON returns.
+sequenceDiagram
+    actor User
+    participant UI as Web app
+    participant Caddy
+    participant API as API process
+    participant PG as Postgres
+    participant Neo as Neo4j
+    participant Embed as Embedding API
+    participant Chat as Chat API
+
+    User->>UI: Question on /app/ask
+    Note over UI: Session cookie is httpOnly.<br/>Model keys are in the JSON body.
+    UI->>Caddy: POST /api/ask
+    Caddy->>API: POST /ask
+    Note over Caddy,API: TLS ends at Caddy. /api is removed.<br/>The proxy stays open for the whole Ask.
+
+    API->>PG: Cookie to session to user id
+    PG-->>API: This user
+    API->>Neo: Load this user's graph
+    Neo-->>API: Documents, entities, statements
+    Note over API: That graph stays in memory<br/>for the rest of this request.
+
+    loop One model turn at a time, at most 12 tool calls
+        API->>Chat: Question and observations so far
+        Chat-->>API: A tool call, or the final answer
+        alt search_graph
+            API->>Embed: Embed this search query
+            Embed-->>API: Vector
+            Note over API: Similarity, then PageRank,<br/>on the graph already loaded.
+        else read_document
+            API->>PG: Up to 3 stored passages<br/>for a file search already returned
+            PG-->>API: Passage text
+        end
+    end
+
+    API-->>Caddy: Answer, steps, highlight ids
+    Caddy-->>UI: Same JSON
+    UI-->>User: Steps and answer

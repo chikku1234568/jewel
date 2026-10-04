@@ -1,0 +1,54 @@
+%% name: 07-dev-and-production
+%% Developer and production paths. CI exists. The deploy arrow is still a person.
+flowchart TB
+    subgraph laptop [Laptop]
+        edit[Edit the repo]
+        devdb[Postgres and Neo4j<br/>infra/docker-compose.yml]
+        devapp[API and Vite on the host<br/>localhost]
+        edit --> devdb
+        edit --> devapp
+        devapp --> devdb
+    end
+
+    edit --> push[git push]
+    push --> github[GitHub]
+
+    subgraph ci [GitHub Actions]
+        backend[Backend job<br/>ruff check, ruff format, pytest]
+        frontend[Frontend job<br/>lint, typecheck, vite build]
+        testdb[(Throwaway Postgres<br/>jewel_test)]
+        backend --> testdb
+    end
+
+    github --> backend
+    github --> frontend
+
+    subgraph vm [Production VM]
+        hand[Person: git pull, then<br/>docker compose up --build]
+        caddy[Caddy<br/>ports 80 and 443]
+        api[API image]
+        pg[(Postgres volume)]
+        neo[(Neo4j volume)]
+        uploads[(Upload volume)]
+        secrets[prod.env on the VM<br/>mode 600]
+        caddy --> api
+        api --> pg
+        api --> neo
+        api --> uploads
+        secrets --> api
+        secrets --> pg
+        secrets --> neo
+    end
+
+    backend -.->|green check, no artifact shipped| hand
+    frontend -.->|green check, no artifact shipped| hand
+
+    google[Google sign-in]
+    models[Hosted model APIs]
+    api --> google
+    api --> models
+
+    offsite[Backup disk off the VM<br/>not scripted yet]
+    pg -.-> offsite
+    neo -.-> offsite
+    uploads -.-> offsite
