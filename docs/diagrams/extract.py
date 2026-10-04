@@ -19,8 +19,17 @@ for block in blocks:
     names.append(match.group(1))
     (HERE / f"{match.group(1)}.mmd").write_text(block)
 
+def _hand_written(path: Path) -> bool:
+    """Diagrams maintained beside architecture.md carry this marker and are kept."""
+    source = path if path.suffix == ".mmd" else path.with_suffix(".mmd")
+    if not source.exists():
+        return False
+    return "%% keep: hand" in source.read_text(encoding="utf-8")[:400]
+
+
 for stale in [*HERE.glob("*.mmd"), *HERE.glob("*.png")]:
-    if stale.stem not in names:
-        stale.unlink()
-        print(f"removed stale {stale.name}")
+    if stale.stem in names or _hand_written(stale):
+        continue
+    stale.unlink()
+    print(f"removed stale {stale.name}")
 print("extracted:", ", ".join(names))

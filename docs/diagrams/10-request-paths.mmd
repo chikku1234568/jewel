@@ -1,0 +1,57 @@
+%% name: 10-request-paths
+%% keep: hand
+%% Four things a signed-in person can do, and where each one writes.
+flowchart TB
+    person[Signed-in browser]
+
+    subgraph signin [Sign in]
+        g1[Google returns an ID token]
+        g2[API checks issuer, audience, expiry]
+        g3{Address on the allowlist?}
+        g4[Upsert user by Google sub<br/>HMAC of the cookie in Postgres]
+        g5[Redirect, no cookie]
+        g1 --> g2 --> g3
+        g3 -->|yes| g4
+        g3 -->|no| g5
+    end
+
+    subgraph upload [Upload one file]
+        u1["Accept PDF, Word, PowerPoint,<br/>Excel, HTML, text, Markdown"]
+        u2{Under 20 MB,<br/>PDF at most 20 pages,<br/>bytes match the type?}
+        u3[Store bytes on the volume<br/>and Markdown text in Postgres<br/>status parsed]
+        u4[Reject, store nothing]
+        u1 --> u2
+        u2 -->|yes| u3
+        u2 -->|no| u4
+    end
+
+    subgraph build [Build one file]
+        b1[POST returns as soon as<br/>the row says extracting]
+        b2[Daemon thread waits<br/>for the single build lock]
+        b3["Chunk about 1100 characters<br/>8 passages in flight"]
+        b4[Extract, one follow-up,<br/>then a keep-or-drop check]
+        b5[Embed with the visitor key]
+        b6[Write this file's statements<br/>into Neo4j and leave other files]
+        b1 --> b2 --> b3 --> b4 --> b5 --> b6
+    end
+
+    subgraph ask [Ask]
+        a1[POST stays open until the answer]
+        a2[Load this user's graph<br/>into the process]
+        a3["Agent, one tool at a time,<br/>at most 12 calls"]
+        a4["search_graph: 8 similar facts<br/>plus at most 8 from the walk"]
+        a5[read_document: at most<br/>3 passages already quoted]
+        a6[JSON answer, steps, highlight ids<br/>not saved]
+        a1 --> a2 --> a3
+        a3 --> a4
+        a3 --> a5
+        a4 --> a3
+        a5 --> a3
+        a3 --> a6
+    end
+
+    person --> signin
+    person --> upload
+    person --> build
+    person --> ask
+    g4 --> person

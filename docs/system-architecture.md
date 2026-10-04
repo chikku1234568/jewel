@@ -27,4 +27,4 @@ Confirm the registrar and the VM checkout before paying. Model calls are paid by
 
 The running site is `https://tryjewel.dev`, from `~/jewel` on the VM: `infra/docker-compose.prod.yml`, `infra/Caddyfile`, `infra/Dockerfile.caddy`, and `infra/prod.env` (not in git). Local development stays on `infra/docker-compose.yml`. The Deploy workflow is `.github/workflows/deploy.yml`.
 
-One Ask through these layers is `docs/diagrams/06-ask-on-the-vm.mmd`. The developer and production paths are `docs/diagrams/07-dev-and-production.mmd`. A Vercel-only deploy of this app fails as in `docs/diagrams/08-vercel-only-fails.mmd`.
+The running machine is `docs/diagrams/09-production-runtime.mmd`. Sign-in, upload, build, and Ask are `docs/diagrams/10-request-paths.mmd`. One Ask in order is `docs/diagrams/06-ask-on-the-vm.mmd`. What limits concurrency is `docs/diagrams/11-concurrency.mmd`. Laptop, CI, and deploy are `docs/diagrams/07-dev-and-production.mmd`. A Vercel-only deploy of this app fails as in `docs/diagrams/08-vercel-only-fails.mmd`.
