@@ -4,12 +4,13 @@ import io
 import zipfile
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from jewel.api.routes.ask import AskBody, clean_question
 from jewel.documents.service import UploadRejected, check_upload
 from jewel.kg.neo4j_schema import constraint_statements
-from jewel.llm.choices import AgentChoice, EmbeddingChoice
+from jewel.llm.choices import AgentChoice, EmbeddingChoice, make_agent_chat
 from tests.fixtures import make_docx, make_pdf
 
 
@@ -92,6 +93,28 @@ def test_api_base_must_be_public_https_and_the_key_a_single_token() -> None:
         AgentChoice.model_validate(
             {"model": "kimi-k2.6", "base_url": "https://api.moonshot.ai/v1", "api_key": "a\nb"}
         )
+
+
+def test_an_empty_ask_key_is_refused_even_when_the_server_has_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KIMI_API_KEY", "server-secret")
+    choice = AgentChoice.model_validate(
+        {"model": "kimi-k2.6", "base_url": "https://api.moonshot.ai/v1", "api_key": ""}
+    )
+    with pytest.raises(HTTPException) as raised:
+        make_agent_chat(choice)
+    assert raised.value.status_code == 400
+    chat = make_agent_chat(
+        AgentChoice.model_validate(
+            {
+                "model": "kimi-k2.6",
+                "base_url": "https://api.moonshot.ai/v1",
+                "api_key": "sk-user",
+            }
+        )
+    )
+    assert chat._api_key == "sk-user"
 
 
 def test_neo4j_schema_names_every_node_kind() -> None:

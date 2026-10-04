@@ -1,0 +1,30 @@
+%% name: 08-vercel-only-fails
+%% What happens if the whole app is a Vercel function. No VM, no Compose.
+flowchart TB
+    browser[Browser calls the jewel API as a Vercel function]
+
+    browser --> build
+    browser --> ask
+    browser --> data
+
+    subgraph build [Build]
+        b1[Function writes extracting and returns 200]
+        b2[Returning the response ends the invocation.<br/>The platform freezes the process.]
+        b3[The extraction thread stops.<br/>The file stays extracting.]
+        b1 --> b2 --> b3
+    end
+
+    subgraph ask [Ask]
+        a1[Function calls the model while the request is open]
+        a2[Hobby ends the function at 300 seconds]
+        a3[The browser never gets the answer JSON]
+        a1 --> a2 --> a3
+    end
+
+    subgraph data [Files and databases]
+        d1[A body over 4.5 MB is rejected]
+        d2[The function disk is discarded<br/>when the invocation ends]
+        d3[Postgres, Neo4j, and the uploads<br/>have no computer that stays on]
+        d1 --> d3
+        d2 --> d3
+    end

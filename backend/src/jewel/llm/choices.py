@@ -56,7 +56,7 @@ def clean_api_base(value: str) -> str:
 
 
 class AgentChoice(BaseModel):
-    """Who writes the answer. Empty api_key uses KIMI_API_KEY on the server."""
+    """Who writes the answer. The request must carry the user's API key."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -147,15 +147,12 @@ class EmbeddingChoice(BaseModel):
 
 
 def make_agent_chat(choice: AgentChoice):
-    """OpenAI-compatible chat for the answer agent. Defaults to server-side Kimi."""
-    import os
-
-    key = choice.api_key.strip() or os.environ.get("KIMI_API_KEY", "").strip()
-    model = choice.model.strip() or "kimi-k2.6"
-    base = choice.base_url.strip() or "https://api.moonshot.ai/v1"
-    if not key:
+    """OpenAI-compatible chat for the answer agent. The request must carry the user's key."""
+    if not choice.api_key.strip():
         raise HTTPException(status_code=400, detail="An API key is required for the agent")
-    return OpenAICompatibleChat(model, base, key)
+    if not choice.model.strip() or not choice.base_url.strip():
+        raise HTTPException(status_code=400, detail="Agent model and base URL are required")
+    return OpenAICompatibleChat(choice.model.strip(), choice.base_url.strip(), choice.api_key)
 
 
 def make_chat(choice: ExtractionChoice):

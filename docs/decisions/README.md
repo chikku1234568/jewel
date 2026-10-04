@@ -17,6 +17,7 @@ Lightweight ADRs (Michael Nygard format). Status is **Proposed**, **Accepted**, 
 | [0012](0012-retrieval-graph-ppr.md) | Retrieval: HippoRAG-2-inspired time-aware PPR in networkx | Accepted |
 | [0013](0013-single-langgraph-agent.md) | One LangGraph tool-using agent | Accepted |
 | [0014](0014-user-xai-key.md) | User-supplied xAI key through one OpenAI-compatible client | Accepted |
+| [0015](0015-branching.md) | Branching: `main` only, changes through a pull request | Accepted |
 
 ## Superseded (history only)
 
