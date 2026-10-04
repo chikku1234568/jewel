@@ -8,6 +8,7 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   missing_code: 'Google did not return a sign-in code. Please try again.',
   invalid_state: 'That sign-in link expired. Please try again.',
   token_invalid: 'Google sign-in could not be verified. Please try again.',
+  not_allowed: 'This Google account is not on the jewel sign-in list.',
 }
 
 type SessionCheck = 'checking' | 'signed-out' | 'unreachable'

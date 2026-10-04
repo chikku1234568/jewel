@@ -134,7 +134,9 @@ def test_google_error_param(client, db) -> None:
 
 
 def test_secure_cookie_outside_local(app, settings, client, db, fake_google) -> None:
-    production = settings.model_copy(update={"env": "production"})
+    production = settings.model_copy(
+        update={"env": "production", "allowed_emails": "alice@example.com"}
+    )
     from jewel.config import get_settings
 
     app.dependency_overrides[get_settings] = lambda: production
@@ -144,6 +146,40 @@ def test_secure_cookie_outside_local(app, settings, client, db, fake_google) -> 
     assert "secure" in set_cookie
     assert "httponly" in set_cookie
     assert "samesite=lax" in set_cookie
+
+
+def test_an_unlisted_account_gets_no_session(app, settings, client, db, fake_google) -> None:
+    production = settings.model_copy(
+        update={"env": "production", "allowed_emails": "owner@example.com"}
+    )
+    from jewel.config import get_settings
+
+    app.dependency_overrides[get_settings] = lambda: production
+    state = start(client, db)
+    fake_google["nonce"] = nonce_for(db, state)
+    response = callback(client, state)
+    assert "signin_error=not_allowed" in response.headers["location"]
+    assert "set-cookie" not in response.headers
+    assert db.execute("SELECT count(*) AS n FROM users").fetchone()["n"] == 0
+    assert db.execute("SELECT count(*) AS n FROM sessions").fetchone()["n"] == 0
+
+
+def test_an_existing_session_ends_when_the_address_is_removed(
+    app, settings, client, db, fake_google
+) -> None:
+    state = start(client, db)
+    fake_google["nonce"] = nonce_for(db, state)
+    callback(client, state)
+    assert client.get("/me").status_code == 200
+
+    production = settings.model_copy(
+        update={"env": "production", "allowed_emails": "owner@example.com"}
+    )
+    from jewel.config import get_settings
+
+    app.dependency_overrides[get_settings] = lambda: production
+    assert client.get("/me").status_code == 401
+    assert db.execute("SELECT count(*) AS n FROM sessions").fetchone()["n"] == 0
 
 
 def test_logout_deletes_session(client, db, fake_google) -> None:
