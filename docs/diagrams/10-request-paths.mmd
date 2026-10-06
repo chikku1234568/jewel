@@ -26,8 +26,8 @@ flowchart TB
     end
 
     subgraph build [Build one file]
-        b1[POST returns as soon as<br/>the row says extracting]
-        b2[Daemon thread waits<br/>for the single build lock]
+        b1["POST returns at once.<br/>The row says extracting,<br/>or waiting when the slots are full"]
+        b2["Postgres allows two extracting files,<br/>and only one per account"]
         b3["Chunk about 1100 characters<br/>8 passages in flight"]
         b4[Extract, one follow-up,<br/>then a keep-or-drop check]
         b5[Embed with the visitor key]

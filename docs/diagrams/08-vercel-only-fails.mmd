@@ -11,7 +11,7 @@ flowchart TB
     subgraph build [Build]
         b1[Function writes extracting and returns 200]
         b2[Returning the response ends the invocation.<br/>The platform freezes the process.]
-        b3[The extraction thread stops.<br/>The file stays extracting.]
+        b3[The extraction thread stops.<br/>The build does not finish.]
         b1 --> b2 --> b3
     end
 

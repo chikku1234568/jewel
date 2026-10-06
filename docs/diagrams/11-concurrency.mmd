@@ -1,6 +1,6 @@
 %% name: 11-concurrency
 %% keep: hand
-%% Where work piles up. Jewel does not count requests per person or per minute.
+%% Where work piles up. Two files can extract at once. Each account has an hourly cap.
 flowchart TB
     browser[Browser]
 
@@ -11,11 +11,12 @@ flowchart TB
 
     subgraph process [One API process]
         pool["Sync routes share one pool<br/>of 40 threads"]
-        up["Upload runs inside the request.<br/>The page sends files one by one."]
-        ask["Ask holds one thread<br/>until the model finishes"]
-        start["Build starts a daemon thread<br/>and returns"]
-        lock["One lock for the whole VM.<br/>One file is extracted at a time."]
-        eight["Inside that file,<br/>8 passage calls at once"]
+        up["Upload runs inside the request.<br/>The page sends files one by one.<br/>30 uploads an hour per account"]
+        ask["Ask holds one thread<br/>until the model finishes<br/>60 questions an hour per account"]
+        start["Build records waiting and returns.<br/>20 builds an hour per account"]
+        slots["Postgres starts a file when a slot is free.<br/>At most two extracting.<br/>At most one of those per account."]
+        eight["Each extracting file<br/>makes 8 passage calls at once"]
+        restart["A restart marks an unfinished build failed.<br/>The key is not stored. Build again."]
     end
 
     subgraph provider ["The visitor's model host"]
@@ -31,9 +32,10 @@ flowchart TB
     browser --> body --> hold --> pool
     pool --> up
     pool --> ask
-    pool --> start --> lock --> eight
+    pool --> start --> slots --> eight
+    slots -.-> restart
     ask --> modelCall
     eight --> modelCall
     modelCall --> retry
     ask --> copy
-    lock --> neo
+    slots --> neo
