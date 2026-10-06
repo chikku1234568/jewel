@@ -201,6 +201,8 @@ Read in this order if you want to run jewel in production:
 2. [Deployment strategy](docs/deployment-strategy.md): hosting options, the recommended
    setup, environments and delivery pipeline, configuration and secrets, security,
    operations, and a phased rollout checklist.
+3. [Backend structure](docs/backend-structure.md): code map of `backend/`, every API route,
+   core flows traced through files and functions, data stores, config and known gaps.
 
 Background:
 
