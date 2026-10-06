@@ -46,6 +46,7 @@ def test_document_status_values() -> None:
         "parsing",
         "parsed",
         "failed",
+        "waiting",
         "extracting",
         "ready",
     ]

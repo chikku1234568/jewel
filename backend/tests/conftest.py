@@ -63,7 +63,7 @@ def database_url() -> str:
 def db(database_url: str) -> Iterator[psycopg.Connection]:
     with connect(database_url) as conn:
         apply_schema(conn)
-        conn.execute("TRUNCATE users, sessions, oauth_states, documents CASCADE")
+        conn.execute("TRUNCATE users, sessions, oauth_states, documents, extraction_cache CASCADE")
         yield conn
 
 

@@ -738,6 +738,10 @@ textarea:focus {
   background: var(--accent);
 }
 
+.status-waiting::before {
+  background: var(--ink-2);
+}
+
 .status-failed {
   color: var(--danger);
 }

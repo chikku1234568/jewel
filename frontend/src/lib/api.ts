@@ -25,6 +25,7 @@ export type DocumentStatus =
   | 'parsing'
   | 'parsed'
   | 'failed'
+  | 'waiting'
   | 'extracting'
   | 'ready'
 

@@ -35,17 +35,23 @@ CREATE TABLE IF NOT EXISTS documents (
     document_date   date,                   -- null in this pass (no date guessing)
     extracted_text  text,
     status          text NOT NULL CHECK (
-        status IN ('stored', 'parsing', 'parsed', 'failed', 'extracting', 'ready')
+        status IN ('stored', 'parsing', 'parsed', 'failed', 'waiting', 'extracting', 'ready')
     ),
     error           text,
     build_done      integer NOT NULL DEFAULT 0,
-    build_total     integer NOT NULL DEFAULT 0
+    build_total     integer NOT NULL DEFAULT 0,
+    -- When the person clicked Build. The queue runs the oldest waiting file first.
+    build_requested_at timestamptz
 );
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_done integer NOT NULL DEFAULT 0;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_total integer NOT NULL DEFAULT 0;
 -- Triples written to the graph by this file's last finished build.
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS triples_kept integer NOT NULL DEFAULT 0;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS build_requested_at timestamptz;
 CREATE INDEX IF NOT EXISTS documents_user_uploaded_idx ON documents (user_id, uploaded_at DESC);
+CREATE INDEX IF NOT EXISTS documents_build_queue_idx
+    ON documents (build_requested_at, id)
+    WHERE status IN ('waiting', 'extracting');
 
 -- Rows the application can actually store. Applied on every start; skipped once present.
 DO $$
@@ -75,6 +81,12 @@ BEGIN
             CHECK (build_done >= 0 AND build_total >= 0 AND triples_kept >= 0);
     END IF;
 END $$;
+
+-- CREATE TABLE does not alter a check that already exists. Replace it so `waiting` is allowed.
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_status_check;
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_status_allowed;
+ALTER TABLE documents ADD CONSTRAINT documents_status_allowed
+    CHECK (status IN ('stored', 'parsing', 'parsed', 'failed', 'waiting', 'extracting', 'ready'));
 
 -- The passages a build sent to the extraction model, in order. Written at the start of
 -- each build, before any model call; a rebuild replaces them. A statement stores the

@@ -20,6 +20,7 @@ const STATUS_LABELS: Record<DocumentSummary['status'], string> = {
   parsing: 'Reading',
   parsed: 'Not in the graph',
   failed: 'Failed',
+  waiting: 'Waiting to build',
   extracting: 'Adding this file',
   ready: 'In the graph',
 }
@@ -97,7 +98,8 @@ export function DocumentLibrary({
   useEffect(() => {
     onBuiltRef.current = onBuilt
   }, [onBuilt])
-  const building = documents?.some((doc) => doc.status === 'extracting') ?? false
+  const building =
+    documents?.some((doc) => doc.status === 'extracting' || doc.status === 'waiting') ?? false
   useEffect(() => {
     if (!building) return
     const timer = window.setInterval(() => {
@@ -294,6 +296,9 @@ export function DocumentLibrary({
                     <span className={`status status-${doc.status}`}>
                       {STATUS_LABELS[doc.status] ?? doc.status}
                     </span>
+                    {doc.status === 'waiting' ? (
+                      <div className="progress-label">Another build is using the slot.</div>
+                    ) : null}
                     {doc.status === 'extracting' ? (
                       <div className="progress">
                         {(doc.build_total ?? 0) > 0 ? (
@@ -327,7 +332,7 @@ export function DocumentLibrary({
                     >
                       Open
                     </button>
-                    {doc.status === 'extracting' ? (
+                    {doc.status === 'extracting' || doc.status === 'waiting' ? (
                       <button
                         type="button"
                         className="button button-small button-stop"
@@ -354,7 +359,7 @@ export function DocumentLibrary({
                     >
                       Delete
                     </button>
-                    {doc.status !== 'extracting' ? (
+                    {doc.status !== 'extracting' && doc.status !== 'waiting' ? (
                       <p className="build-note hint small">
                         Adds this file only. Earlier files stay as they are.
                       </p>

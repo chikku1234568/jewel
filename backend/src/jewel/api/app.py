@@ -24,6 +24,7 @@ app can send the session cookie with ``fetch(..., {credentials: "include"})``.
 """
 
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -31,9 +32,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from jewel import __version__
+from jewel.api.limits import RateLimiter
 from jewel.api.routes import ask, auth, documents, graph, health
 from jewel.config import Settings, get_settings
 from jewel.db.postgres import apply_schema, connect
+from jewel.documents.build_queue import fail_interrupted, run_loop
 from jewel.kg.neo4j_schema import ensure_schema
 
 logger = logging.getLogger(__name__)
@@ -44,9 +47,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        queue_stop: threading.Event | None = None
+        queue_thread: threading.Thread | None = None
         if settings.database_url:
             with connect(settings.database_url) as conn:
                 apply_schema(conn)
+                fail_interrupted(conn)
+            queue_stop = threading.Event()
+            queue_thread = threading.Thread(
+                target=run_loop,
+                args=(queue_stop, settings.database_url),
+                name="jewel-build-queue",
+                daemon=True,
+            )
+            queue_thread.start()
         else:
             logger.warning("DATABASE_URL is not set; sign-in and documents are unavailable")
         driver = _neo4j_driver(settings)
@@ -54,6 +68,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if queue_stop is not None and queue_thread is not None:
+                queue_stop.set()
+                queue_thread.join(timeout=3)
             if driver is not None:
                 driver.close()
 
@@ -63,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="A personal live knowledge graph over your own documents.",
         lifespan=lifespan,
     )
+    app.state.limits = RateLimiter()
     if settings.frontend_url:
         app.add_middleware(
             CORSMiddleware,
