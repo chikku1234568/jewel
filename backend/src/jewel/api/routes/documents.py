@@ -24,9 +24,11 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from neo4j import GraphDatabase
 
+from jewel.api.limits import BUILD, UPLOAD, enforce
 from jewel.auth.dependencies import CurrentUser
 from jewel.db.postgres import AppSettings, DbConn, connect
-from jewel.documents import repository, service
+from jewel.documents import build_queue, repository, service
+from jewel.documents.build_queue import PendingBuild
 from jewel.documents.models import MAX_UPLOAD_BYTES, DocumentDetail, DocumentSummary
 from jewel.documents.storage import FileStore
 from jewel.ingestion.extraction_cache import PostgresExtractionCache
@@ -40,7 +42,6 @@ from jewel.llm.choices import (
 )
 
 router = APIRouter(prefix="/documents", tags=["documents"])
-_BUILD_LOCK = threading.Lock()
 _CANCELS: dict[str, tuple[threading.Event, object]] = {}
 _CANCELS_LOCK = threading.Lock()
 
@@ -59,6 +60,7 @@ def _parse_id(document_id: str) -> uuid.UUID:
 def upload(
     request: Request, file: UploadFile, user: CurrentUser, conn: DbConn, settings: AppSettings
 ) -> DocumentSummary:
+    enforce(request, user["id"], UPLOAD)
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES + _MULTIPART_OVERHEAD:
         raise HTTPException(status_code=413, detail=service.TOO_LARGE_ERROR)
@@ -105,32 +107,35 @@ def build(
     driver = getattr(request.app.state, "neo4j", None)
     if driver is None:
         raise HTTPException(status_code=503, detail="Neo4j is not available")
-    if row["status"] == "extracting":
+    if row["status"] in ("extracting", "waiting"):
         raise HTTPException(status_code=409, detail="This file is already being built")
+    enforce(request, user["id"], BUILD)
     embedder = make_embedder(body or EmbeddingChoice())
     chat = make_chat(body.extraction if body else ExtractionChoice())
-    repository.mark_extracting(conn, parsed_id)
     cancel = threading.Event()
     with _CANCELS_LOCK:
         _CANCELS[str(parsed_id)] = (cancel, chat)
-    threading.Thread(
-        target=_build_in_background,
-        kwargs={
-            "database_url": settings.database_url,
-            "neo4j_uri": settings.neo4j_uri,
-            "neo4j_user": settings.neo4j_user,
-            "neo4j_password": settings.neo4j_password,
-            "document_id": parsed_id,
-            "user_id": str(user["id"]),
-            "filename": row["filename"],
-            "text": text,
-            "document_date": row["document_date"],
-            "embedder": embedder,
-            "chat": chat,
-            "cancel": cancel,
-        },
-        daemon=True,
-    ).start()
+    build_queue.submit(
+        conn,
+        PendingBuild(
+            document_id=parsed_id,
+            cancel=cancel,
+            kwargs={
+                "database_url": settings.database_url,
+                "neo4j_uri": settings.neo4j_uri,
+                "neo4j_user": settings.neo4j_user,
+                "neo4j_password": settings.neo4j_password,
+                "document_id": parsed_id,
+                "user_id": str(user["id"]),
+                "filename": row["filename"],
+                "text": text,
+                "document_date": row["document_date"],
+                "embedder": embedder,
+                "chat": chat,
+                "cancel": cancel,
+            },
+        ),
+    )
     updated = repository.get_document(conn, user["id"], parsed_id)
     assert updated is not None
     return DocumentSummary.model_validate(updated)
@@ -144,31 +149,37 @@ def _report_progress(database_url: str, document_id, done: int, total: int) -> N
 def _build_in_background(**kwargs) -> None:
     """Run extraction off the request so a long paper does not hit the HTTP timeout."""
     document_id = kwargs["document_id"]
+    if kwargs["cancel"].is_set():
+        with connect(kwargs["database_url"]) as conn:
+            repository.mark_build_failed(conn, document_id, "stopped")
+        with _CANCELS_LOCK:
+            _CANCELS.pop(str(document_id), None)
+        build_queue.promote_later(kwargs["database_url"])
+        return
     driver = GraphDatabase.driver(
         kwargs["neo4j_uri"], auth=(kwargs["neo4j_user"], kwargs["neo4j_password"])
     )
     try:
         with connect(kwargs["database_url"]) as conn:
             try:
-                with _BUILD_LOCK:
-                    kept = build_parsed_text(
-                        document_id=str(document_id),
-                        user_id=kwargs["user_id"],
-                        filename=kwargs["filename"],
-                        text=kwargs["text"],
-                        document_date=kwargs["document_date"],
-                        chat=kwargs["chat"],
-                        embedder=kwargs["embedder"],
-                        store=Neo4jGraphStore(driver),
-                        cache=PostgresExtractionCache(conn),
-                        on_progress=lambda done, total: _report_progress(
-                            kwargs["database_url"], document_id, done, total
-                        ),
-                        cancel=kwargs["cancel"],
-                        save_chunks=lambda texts: repository.replace_chunks(
-                            conn, kwargs["user_id"], document_id, texts
-                        ),
-                    )
+                kept = build_parsed_text(
+                    document_id=str(document_id),
+                    user_id=kwargs["user_id"],
+                    filename=kwargs["filename"],
+                    text=kwargs["text"],
+                    document_date=kwargs["document_date"],
+                    chat=kwargs["chat"],
+                    embedder=kwargs["embedder"],
+                    store=Neo4jGraphStore(driver),
+                    cache=PostgresExtractionCache(conn),
+                    on_progress=lambda done, total: _report_progress(
+                        kwargs["database_url"], document_id, done, total
+                    ),
+                    cancel=kwargs["cancel"],
+                    save_chunks=lambda texts: repository.replace_chunks(
+                        conn, kwargs["user_id"], document_id, texts
+                    ),
+                )
                 if not kwargs["cancel"].is_set():
                     repository.mark_ready(conn, document_id, kept)
             except BuildCancelled:
@@ -179,10 +190,16 @@ def _build_in_background(**kwargs) -> None:
         with _CANCELS_LOCK:
             _CANCELS.pop(str(document_id), None)
         driver.close()
+        build_queue.promote_later(kwargs["database_url"])
+
+
+build_queue.set_runner(_build_in_background)
 
 
 @router.post("/{document_id}/stop")
-def stop_build(document_id: str, user: CurrentUser, conn: DbConn) -> DocumentSummary:
+def stop_build(
+    document_id: str, user: CurrentUser, conn: DbConn, settings: AppSettings
+) -> DocumentSummary:
     """Stop a build. Passages already sent to the model may still finish."""
     parsed_id = _parse_id(document_id)
     row = repository.get_document(conn, user["id"], parsed_id)
@@ -196,8 +213,10 @@ def stop_build(document_id: str, user: CurrentUser, conn: DbConn) -> DocumentSum
         abort = getattr(chat, "abort", None)
         if abort is not None:
             abort()
-    if row["status"] == "extracting":
+    if row["status"] in ("extracting", "waiting"):
         repository.mark_build_failed(conn, parsed_id, "stopped")
+        build_queue.discard(str(parsed_id))
+        build_queue.promote_later(settings.database_url)
     updated = repository.get_document(conn, user["id"], parsed_id)
     assert updated is not None
     return DocumentSummary.model_validate(updated)
@@ -213,6 +232,8 @@ def get_one(document_id: str, user: CurrentUser, conn: DbConn) -> DocumentDetail
 
 def _stop_builds(document_ids: list[str]) -> None:
     """Ask any of these builds to stop. A call already on the wire can still finish."""
+    for document_id in document_ids:
+        build_queue.discard(document_id)
     with _CANCELS_LOCK:
         running = [_CANCELS.get(document_id) for document_id in document_ids]
     for entry in running:
@@ -244,6 +265,7 @@ def delete_library(
 def delete(
     document_id: str, request: Request, user: CurrentUser, conn: DbConn, settings: AppSettings
 ) -> Response:
+    _stop_builds([document_id])
     stored_path = repository.delete_document(conn, user["id"], _parse_id(document_id))
     if stored_path is None:
         raise HTTPException(status_code=404, detail="Document not found")

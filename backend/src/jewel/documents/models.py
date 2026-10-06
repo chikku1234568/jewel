@@ -6,6 +6,7 @@ Status contract (handoff to the graph pass):
 * ``parsing``: text extraction running
 * ``parsed``: Markdown text is in Postgres, graph not built; the success status of the upload flow
 * ``failed``: bad file, empty text or parse error; row and file remain, ``error`` is set
+* ``waiting``: Build was clicked and this file is queued behind another build
 * ``extracting`` / ``ready``: set later by the graph pass only
 """
 
@@ -44,6 +45,7 @@ class DocumentStatus(StrEnum):
     PARSING = "parsing"
     PARSED = "parsed"
     FAILED = "failed"
+    WAITING = "waiting"
     EXTRACTING = "extracting"
     READY = "ready"
 

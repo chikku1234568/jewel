@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from jewel.agents.chat_model import ToolCallingChat
 from jewel.agents.graph import MAX_TOOL_CALLS, run_agent
+from jewel.api.limits import ASK, enforce
 from jewel.auth.dependencies import CurrentUser
 from jewel.db.postgres import DbConn
 from jewel.documents import repository
@@ -77,6 +78,7 @@ def ask(body: AskBody, request: Request, user: CurrentUser, conn: DbConn) -> Ask
     store = Neo4jGraphStore(driver).load_user(str(user["id"]))
     if not store.documents:
         raise HTTPException(status_code=409, detail="Build a document before asking")
+    enforce(request, user["id"], ASK)
     require_same_model(store.documents.values(), body)
     embedder = make_embedder(body)
     result = run_agent(

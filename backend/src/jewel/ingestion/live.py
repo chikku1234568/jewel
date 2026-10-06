@@ -26,7 +26,8 @@ from jewel.llm.extract import (
 
 # Passages of one file sent to the user's extraction API at the same time. Bounded on
 # purpose: wider mostly buys HTTP 429s, which the client then waits out
-# (llm/openai_chat.py). _BUILD_LOCK still builds one file at a time.
+# (llm/openai_chat.py). Each account brings its own key, so each extracting file keeps
+# this many calls. The queue caps how many files extract at once.
 _API_WORKERS = 8
 
 

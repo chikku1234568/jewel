@@ -36,6 +36,18 @@ def mark_parsed(conn: psycopg.Connection, document_id: uuid.UUID, text: str) -> 
     )
 
 
+def mark_waiting(conn: psycopg.Connection, document_id: uuid.UUID) -> None:
+    conn.execute(
+        """
+        UPDATE documents
+        SET status = %s, error = NULL, build_done = 0, build_total = 0, triples_kept = 0,
+            build_requested_at = now()
+        WHERE id = %s
+        """,
+        (DocumentStatus.WAITING, document_id),
+    )
+
+
 def mark_extracting(conn: psycopg.Connection, document_id: uuid.UUID) -> None:
     conn.execute(
         """
