@@ -1,0 +1,43 @@
+%% name: 09-production-runtime
+%% keep: hand
+%% What is running for https://tryjewel.dev. Databases are not on the internet.
+flowchart TB
+    browser[Browser]
+
+    dns["Cloudflare DNS<br/>tryjewel.dev apex only<br/>grey cloud, A record"]
+    browser --> dns
+
+    subgraph cloud [Oracle ap-hyderabad-1]
+        fw["Security list<br/>TCP 22, 80, and 443"]
+        subgraph host ["E5.Flex, 1 OCPU, 8 GB, Ubuntu 24.04"]
+            caddy["Caddy<br/>certificate, gzip, HSTS<br/>body cap 20 MB"]
+            spa[Static React build<br/>VITE_API_BASE_URL=/api]
+            api["API container<br/>one uvicorn process<br/>Docker network only"]
+            pg[("Postgres 17<br/>127.0.0.1:5432")]
+            neo[("Neo4j 5.26 Community<br/>127.0.0.1:7474 and :7687<br/>heap max 1 GB, page cache 1 GB")]
+            files[("Upload volume<br/>original bytes")]
+            env["infra/prod.env mode 600<br/>passwords, Google secret,<br/>allowlist, session secret"]
+            caddy --> spa
+            caddy -->|"/api with the prefix removed<br/>15 minute timeout"| api
+            api --> pg
+            api --> neo
+            api --> files
+            env --> caddy
+            env --> api
+        end
+        fw --> caddy
+    end
+
+    dns --> fw
+
+    google["Google<br/>openid, email, profile"]
+    allow["JEWEL_ALLOWED_EMAILS<br/>checked before a session<br/>and on every later request"]
+    models["Chat and embedding APIs<br/>the visitor types the key"]
+    api --> google
+    api --> allow
+    api --> models
+
+    laptop["Laptop over SSH"]
+    laptop -->|"commands"| host
+    laptop -->|"tunnel to 5433, 7475, 7688<br/>so local Docker can keep its own ports"| pg
+    laptop --> neo

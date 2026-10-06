@@ -1,54 +1,63 @@
 %% name: 07-dev-and-production
-%% Developer and production paths. CI exists. The deploy arrow is still a person.
+%% keep: hand
+%% Laptop, CI, and the VM. A green push to main deploys when JEWEL_AUTO_DEPLOY is true.
 flowchart TB
     subgraph laptop [Laptop]
-        edit[Edit the repo]
+        edit[Edit on a feature branch]
         devdb[Postgres and Neo4j<br/>infra/docker-compose.yml]
-        devapp[API and Vite on the host<br/>localhost]
+        devapp[API and Vite on the host]
         edit --> devdb
         edit --> devapp
         devapp --> devdb
     end
 
-    edit --> push[git push]
-    push --> github[GitHub]
+    edit --> pr[Pull request into main]
+    pr --> ci
 
-    subgraph ci [GitHub Actions]
-        backend[Backend job<br/>ruff check, ruff format, pytest]
-        frontend[Frontend job<br/>lint, typecheck, vite build]
+    subgraph ci [GitHub Actions CI]
+        backend[Backend<br/>ruff and pytest]
+        frontend[Frontend<br/>lint, typecheck, build]
         testdb[(Throwaway Postgres<br/>jewel_test)]
         backend --> testdb
     end
 
-    github --> backend
-    github --> frontend
+    ci --> dry
 
-    subgraph vm [Production VM]
-        hand[Person: git pull, then<br/>docker compose up --build]
-        caddy[Caddy<br/>ports 80 and 443]
-        api[API image]
+    subgraph deployjob [Deploy workflow]
+        dry{"Manual run, or CI on main"}
+        look[SSH in and print<br/>the commit and container list]
+        ship[SSH in, git checkout that commit,<br/>compose up --build]
+        dry -->|status only| look
+        dry -->|rebuild| ship
+    end
+
+    subgraph vm ["VM tryjewel, 150.230.131.57"]
+        gitdir["~/jewel git checkout<br/>read-only deploy key"]
+        env["infra/prod.env<br/>mode 600, never in git"]
+        caddy[Caddy 80 and 443]
+        api[API]
         pg[(Postgres volume)]
         neo[(Neo4j volume)]
         uploads[(Upload volume)]
-        secrets[prod.env on the VM<br/>mode 600]
+        gitdir --> caddy
         caddy --> api
         api --> pg
         api --> neo
         api --> uploads
-        secrets --> api
-        secrets --> pg
-        secrets --> neo
+        env --> api
+        env --> pg
+        env --> neo
     end
 
-    backend -.->|green check, no artifact shipped| hand
-    frontend -.->|green check, no artifact shipped| hand
+    look -->|read only| gitdir
+    ship -->|checkout and compose| gitdir
 
     google[Google sign-in]
-    models[Hosted model APIs]
+    models[Model APIs<br/>key from the browser]
     api --> google
     api --> models
 
-    offsite[Backup disk off the VM<br/>not scripted yet]
+    offsite[Backup copied off the VM<br/>not scripted yet]
     pg -.-> offsite
     neo -.-> offsite
     uploads -.-> offsite
