@@ -34,3 +34,15 @@ backend/data/
 data/ask-retrieval.log
 *.sqlite
 *.db
+
+# Personal notes. Keep them on disk. Do not publish them.
+docs/srikar-POV.md
+docs/resume-project.md
+docs/commands.md
+docs/zeus-upgrade.md
+docs/credit-vm-research-prompt.md
+docs/production-readiness-jewel.md
+docs/LangGraph_2026_ecosystem.txt
+docs/image.png
+docs/mermaid-git-diagram.mmd
+docs/for grok.docx

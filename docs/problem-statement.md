@@ -2,7 +2,7 @@
 
 A person signs in with Google, uploads their own documents, and gets a knowledge graph of those files. They can click through the graph with no question typed. They can save their own xAI API key and ask one agent questions. The agent searches that graph, and the screen shows the search.
 
-This file is the product spec. It replaces the pharmacotherapy showcase completely. The old spec is archived at [problem-statement-pharmacotherapy.md](problem-statement-pharmacotherapy.md) and must not be scaffolded from.
+This file is the original product spec. The root README describes the app as it runs. A model key is sent with each Build or Ask and is not stored.
 
 This pass is a **scaffold revamp**: repository structure, docs, and documented placeholders. Do not implement OAuth, extraction, retrieval, or the agent yet. Section [Scaffold this pass](#scaffold-this-pass) is the checklist.
 

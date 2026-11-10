@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      JEWEL_HOST: ubuntu@150.230.131.57
+      JEWEL_HOST: ${{ secrets.JEWEL_SSH_HOST }}
     steps:
       - name: Choose the commit
         id: plan
@@ -88,6 +88,10 @@ jobs:
       - name: Show what the VM is running
         run: |
           set -euo pipefail
+          if [ -z "$JEWEL_HOST" ]; then
+            echo "Set the Actions secret JEWEL_SSH_HOST to user@host." >&2
+            exit 1
+          fi
           ssh -i ~/.ssh/jewel_actions -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             "$JEWEL_HOST" \
             "set -euo pipefail; cd \"\$HOME/jewel\"; git rev-parse HEAD; docker compose -f infra/docker-compose.prod.yml --env-file infra/prod.env ps"

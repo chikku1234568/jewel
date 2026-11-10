@@ -1,5 +1,7 @@
 # jewel system design
 
+This note was written while the app was still changing. The root README describes what runs now. An empty model key is rejected. The API does not keep a model key.
+
 This document describes how jewel works as a system today: the components, the state
 each one holds, the main request flows, and the properties of the current code that
 matter for running it in production. It is based on the code on `main` at commit

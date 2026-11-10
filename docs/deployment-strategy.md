@@ -1,5 +1,7 @@
 # jewel deployment strategy
 
+This note was written while the app was still changing. The root README describes what runs now. An empty model key is rejected. The API does not keep a model key.
+
 This document proposes how to run jewel in production: where each component runs, how
 requests reach it, what has to change in the code first, and how to deliver, secure and
 operate it. Read [system-design.md](system-design.md) first; it describes the
