@@ -31,7 +31,7 @@ flowchart TB
         dry -->|rebuild| ship
     end
 
-    subgraph vm ["VM tryjewel, 150.230.131.57"]
+    subgraph vm ["The VM"]
         gitdir["~/jewel git checkout<br/>read-only deploy key"]
         env["infra/prod.env<br/>mode 600, never in git"]
         caddy[Caddy 80 and 443]

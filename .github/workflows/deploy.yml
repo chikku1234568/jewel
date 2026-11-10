@@ -3,8 +3,9 @@ name: Deploy
 # CI is the workflow named CI. This job only logs into the VM.
 # Run it by hand first. apply=false prints the commit and container status.
 # apply=true checks out that commit and recreates the containers.
-# A green CI run on main deploys only when the repository variable
-# JEWEL_AUTO_DEPLOY is the string true. Leave it unset until a dry run has passed.
+# A green CI run on main starts this job only when the repository variable
+# JEWEL_AUTO_DEPLOY is the string true. Any other value skips the job, so a
+# push does not try to log into a stopped host.
 on:
   workflow_dispatch:
     inputs:
@@ -30,11 +31,12 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.event == 'push')
+       github.event.workflow_run.event == 'push' &&
+       vars.JEWEL_AUTO_DEPLOY == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      JEWEL_HOST: ubuntu@150.230.131.57
+      JEWEL_HOST: ${{ secrets.JEWEL_SSH_HOST }}
     steps:
       - name: Choose the commit
         id: plan
@@ -88,7 +90,12 @@ jobs:
       - name: Show what the VM is running
         run: |
           set -euo pipefail
+          if [ -z "$JEWEL_HOST" ]; then
+            echo "Set the Actions secret JEWEL_SSH_HOST to user@host." >&2
+            exit 1
+          fi
           ssh -i ~/.ssh/jewel_actions -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
             "$JEWEL_HOST" \
             "set -euo pipefail; cd \"\$HOME/jewel\"; git rev-parse HEAD; docker compose -f infra/docker-compose.prod.yml --env-file infra/prod.env ps"
 
@@ -99,6 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/jewel_actions -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
             "$JEWEL_HOST" "bash -s" -- "$SHA" <<'EOF'
           set -euo pipefail
           sha="$1"
